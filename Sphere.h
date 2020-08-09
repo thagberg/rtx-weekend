@@ -12,9 +12,22 @@ namespace hvk
             : mCenter(origin)
             , mRadius(radius)
         {}
+        Sphere()
+            : Sphere({}, 0.f)
+        {}
 
         Vector getCenter() const { return mCenter; }
         float getRadius() const { return mRadius; }
+
+        Sphere& operator= (const Sphere& rhs)
+        {
+            if (&rhs == this)
+            {
+                return *this;
+            }
+            mCenter = rhs.mCenter;
+            mRadius = rhs.mRadius;
+        }
 
     private:
         Vector mCenter;
