@@ -1,0 +1,26 @@
+#ifndef RTX_WEEKEND_SPHERE_H
+#define RTX_WEEKEND_SPHERE_H
+
+#include "Vector.h"
+
+namespace hvk
+{
+    class Sphere
+    {
+    public:
+        Sphere(const Vector& origin, float radius)
+            : mCenter(origin)
+            , mRadius(radius)
+        {}
+
+        Vector getCenter() const { return mCenter; }
+        float getRadius() const { return mRadius; }
+
+    private:
+        Vector mCenter;
+        float mRadius;
+    };
+}
+
+
+#endif //RTX_WEEKEND_SPHERE_H
