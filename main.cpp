@@ -209,7 +209,6 @@ std::vector<std::vector<Color>> buffers;
             const size_t destScanlineOffset = scanline * width;
             const size_t destOffset = viewportRowOffset + viewportColumnOffset + destScanlineOffset;
             memcpy(
-                reinterpret_cast<hvk::Color*>(finalBuffer.data()) + destOffset,
                 reinterpret_cast<const hvk::Color*>(buffer.data()) + srcOffset,
                 copySize);
         }
