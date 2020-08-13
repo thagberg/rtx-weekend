@@ -36,7 +36,9 @@ namespace hvk
             const auto discriminant = b*b - 4*a*c;
             if (discriminant > 0)
             {
-                float closestRoot = (-b - sqrt(discriminant)) / (2.0 * a);
+                float rootOne = (-b - sqrt(discriminant)) / (2.0 * a);
+                float rootTwo = (-b + sqrt(discriminant)) / (2.0 * a);
+                float closestRoot = std::min(rootOne, rootTwo);
                 return std::optional{ closestRoot };
             }
             return std::nullopt;

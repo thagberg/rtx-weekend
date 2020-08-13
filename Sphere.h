@@ -27,6 +27,7 @@ namespace hvk
             }
             mCenter = rhs.mCenter;
             mRadius = rhs.mRadius;
+            return *this;
         }
 
     private:

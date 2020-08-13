@@ -26,16 +26,9 @@ namespace hvk
 
         }
 
-        Ray(Ray&& r)
-            : mOrigin(std::move(r.mOrigin))
-            , mDirection(std::move(r.mDirection))
-        {
-
-        }
-
         Vector PointAt(float t) const
         {
-            return mOrigin + (t * mDirection);
+            return mOrigin + (mDirection.Normalized() * t);
         }
 
         Vector getDirection() const { return mDirection.Normalized(); }
