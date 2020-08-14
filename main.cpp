@@ -16,6 +16,7 @@ using namespace DirectX;
 #include "hittest.h"
 #include "math.h"
 #include "HitRecord.h"
+#include "Box.h"
 
 using Color = hvk::Vector;
 
@@ -47,7 +48,6 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
 
     hvk::HitRecord earliestHitRecord = {};
     earliestHitRecord.t = std::numeric_limits<double>::max();
-    float earliestHit = std::numeric_limits<float>::max();
     hvk::Sphere earliestSphere;
     hvk::Material earliestMaterial(hvk::MaterialType::Diffuse, hvk::Color(0.f, 0.f, 0.f));
 
@@ -59,38 +59,47 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
         auto intersection = hvk::hit::SphereRayIntersect(sphere, r);
         if (intersection.has_value() && intersection.value() > 0.f && intersection.value() < earliestHitRecord.t)
         {
-            const auto hitPoint = r.PointAt(earliestHit);
-            const auto normal = (hitPoint - sphere.getCenter()).Normalized();
-            const auto dot = hvk::Vector::Dot(normal, r.getDirection());
-            // if (dot <= 0.f)
-            {
-                earliestHitRecord.t = intersection.value();
-                earliestHit = intersection.value();
-                earliestSphere = sphere;
-                earliestMaterial = material;
-            }
+            earliestHitRecord.t = intersection.value();
+            earliestHitRecord.point = r.PointAt(earliestHitRecord.t);
+            earliestHitRecord.normal = (earliestHitRecord.point - sphere.getCenter()).Normalized();
+            earliestMaterial = material;
+        }
+    }
+
+    // test for box intersections
+    // on a successful hit test we'll need:
+    //  t
+    //  the normal of the plane the intersection occurs at
+    auto boxView = registry.view<hvk::Box, hvk::Material>();
+    for (const auto entity : boxView)
+    {
+        const auto& box = boxView.get<hvk::Box>(entity);
+        const auto& material = boxView.get<hvk::Material>(entity);
+        auto intersection = hvk::hit::BoxRayIntersect(box, r);
+        if (intersection.has_value() && intersection.value().second > 0.f && intersection.value().second < earliestHitRecord.t)
+        {
+            earliestHitRecord.t = intersection.value().second;
+            earliestHitRecord.point = r.PointAt(earliestHitRecord.t);
+            earliestHitRecord.normal = box.getSide(intersection.value().first).getDirection().Normalized();
+            earliestMaterial = material;
         }
     }
 
     if (earliestHitRecord.t < std::numeric_limits<double>::max())
     {
-        // we hit the sphere, so calculate the surface normal of the hit-point
-        const auto hitPoint = r.PointAt(earliestHitRecord.t);
-        const auto normal = (hitPoint - earliestSphere.getCenter()).Normalized();
-
         if (depth == kMaxRayDepth && outResult.has_value())
         {
             auto& result = outResult.value();
-            result.hit += hitPoint;
+            result.hit += earliestHitRecord.point;
             result.depth += earliestHitRecord.t;
-            result.normal += 0.5f * Color(normal.X() + 1, normal.Y() + 1, normal.Z() + 1);
-            auto reflected = hvk::Vector::Reflect(r.getDirection(), normal);
+            result.normal += 0.5f * Color(
+                    earliestHitRecord.normal.X() + 1,
+                    earliestHitRecord.normal.Y() + 1,
+                    earliestHitRecord.normal.Z() + 1);
+            auto reflected = hvk::Vector::Reflect(r.getDirection(), earliestHitRecord.normal);
             result.reflect += 0.5f * Color(reflected.X() + 1, reflected.Y() + 1, reflected.Z() + 1);
             result.image += Color(0.f, 0.f, 0.f);
         }
-
-        earliestHitRecord.point = hitPoint;
-        earliestHitRecord.normal = normal;
 
         hvk::Ray scattered = hvk::Ray(hvk::Vector(), hvk::Vector());
         hvk::Color attenuation(0.f, 0.f, 0.f);
@@ -233,7 +242,7 @@ int main() {
 
     // Image setup
     const auto aspectRatio = 16.f / 9.f;
-    const uint16_t imageWidth = 800;
+    const uint16_t imageWidth = 400;
     const uint16_t imageHeight = static_cast<uint16_t>(imageWidth / aspectRatio);
     std::vector<Color> writeOutBuffer;
     writeOutBuffer.resize(imageHeight * imageWidth);
@@ -264,10 +273,6 @@ int main() {
     registry.emplace<hvk::Sphere>(groundEntity, hvk::Vector(0, -100.5f, -1.f), 100.f);
     registry.emplace<hvk::Material>(groundEntity, hvk::MaterialType::Diffuse, hvk::Color(0.f, 1.f, 0.f));
 
-    // auto sphere2 = registry.create();
-    // registry.emplace<hvk::Sphere>(sphere2, hvk::Vector(20.f, 0.f, -20.f), 5.f);
-    // registry.emplace<hvk::Material>(sphere2, hvk::MaterialType::Diffuse, hvk::Color(0.f, 0.f, 1.f));
-
     auto metalSphere1 = registry.create();
     registry.emplace<hvk::Sphere>(metalSphere1, hvk::Vector(-1.0f, 0.f, -1.f), 0.5f);
     registry.emplace<hvk::Material>(metalSphere1, hvk::MaterialType::Metal, hvk::Color(1.f, 1.f, 1.f));
@@ -279,6 +284,17 @@ int main() {
     auto behindSphere = registry.create();
     registry.emplace<hvk::Sphere>(behindSphere, hvk::Vector(0.5f, 0.0f, 1.f), 0.5f);
     registry.emplace<hvk::Material>(behindSphere, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 1.f));
+
+    auto diffuseBox = registry.create();
+    registry.emplace<hvk::Box>(
+            diffuseBox,
+            hvk::Plane(hvk::Vector(-1.5f, 1.f, -2.f), hvk::Vector(0.f, 1.f, 0.f)),
+            hvk::Plane(hvk::Vector(-1.5f, -0.5f, -2.f), hvk::Vector(0.f, -1.f, 0.f)),
+            hvk::Plane(hvk::Vector(-1.5f, 0.25f, -1.f), hvk::Vector(0.f, 0.f, 1.f)),
+            hvk::Plane(hvk::Vector(-1.5f, 0.25f, -3.f), hvk::Vector(0.f, 0.f, -1.f)),
+            hvk::Plane(hvk::Vector(-2.5f, 0.25f, -2.f), hvk::Vector(-1.f, 0.f, 0.f)),
+            hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
+    registry.emplace<hvk::Material>(diffuseBox, hvk::MaterialType::Diffuse, hvk::Color(0.66, 0.2, 0.8));
 
     // Render
     for (int i = imageHeight-1; i >= 0; --i)
