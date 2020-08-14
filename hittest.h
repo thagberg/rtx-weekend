@@ -71,7 +71,8 @@ namespace hvk
             //  t = ((P0 - R) . N) / (D . N)
 
             const auto denominator = Vector::Dot(ray.getDirection(), plane.getDirection());
-            if (denominator > 0.f)
+            const auto epsilon = std::numeric_limits<decltype(denominator)>::epsilon();
+            if (abs(denominator) > epsilon)
             {
                 const auto numerator = Vector::Dot(plane.getOrigin() - ray.getOrigin(), plane.getDirection());
                 return std::optional { numerator / denominator };
@@ -91,6 +92,12 @@ namespace hvk
             for (size_t i = 0; i < sides.size(); ++i)
             {
                 const auto& side = sides[i];
+                // Can't intersect if this side is facing the same direction as the ray
+                if (Vector::Dot(side.getDirection(), ray.getDirection()) > 0.f)
+                {
+                    continue;
+                }
+
                 auto intersection = PlaneRayIntersect(side, ray);
                 // intersected this side, ensure it's inside all other sides
                 if (intersection.has_value())
