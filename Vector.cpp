@@ -110,4 +110,21 @@ namespace hvk
     {
         return v - 2 * Vector::Dot(v, normal) * normal;
     }
+
+    Vector Vector::Refract(const Vector &incident, const Vector &normal, double iorLeave, double iorEnter)
+    {
+        auto IN = Vector::Dot(incident.Normalized(), normal.Normalized());
+        assert(IN >= 0.f);
+        double eta = iorLeave / iorEnter;
+        double k = 1 - (eta * eta) * (1 - (IN * IN));
+        if (k < 0)
+        {
+            // total internal reflection
+            return Reflect(incident, normal);
+        }
+        else
+        {
+            return eta * incident + (eta * IN - sqrt(k)) * normal;
+        }
+    }
 }

@@ -43,6 +43,11 @@ namespace hvk
         float Dot(const Vector& rhs) const;
         static float Dot(const Vector& lhs, const Vector& rhs);
         static Vector Reflect(const Vector& v, const Vector& normal);
+        static Vector Refract(
+                const Vector& incident,
+                const Vector& normal,
+                double iorLeave,
+                double iorEnter);
 
         static Vector RandomUnit();
 
