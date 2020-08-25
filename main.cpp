@@ -17,19 +17,22 @@ using namespace DirectX;
 #include "math.h"
 #include "HitRecord.h"
 #include "Box.h"
+#include "ThreadPool.h"
 
 using Color = hvk::Vector;
 
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 100;
+const uint16_t kNumSamples = 1000;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
 const double kMaxDepth = 5.f;
 
 const double kIORAir = 1.f;
+
+const uint8_t kNumThreads = 16;
 
 struct RayTestResult
 {
@@ -321,31 +324,42 @@ int main() {
             hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
     registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
-    // Render
-    for (int i = imageHeight-1; i >= 0; --i)
     {
-        for (int j = 0; j < imageWidth; ++j)
-        {
-            Color pixelColor(0.f, 0.f, 0.f);
-            auto result = std::make_optional(RayTestResult{});
-            for (size_t s = 0; s < kNumSamples; ++s)
-            {
-                auto u = static_cast<double>(j + hvk::math::getRandom<double, 0.0, 1.0>()) / (imageWidth-1);
-                auto v = static_cast<double>(i + hvk::math::getRandom<double, 0.0, 1.0>()) / (imageHeight-1);
+        // Create thread pool
+        hvk::ThreadPool pool(kNumThreads);
 
-                hvk::Ray skyRay(origin, lowerLeftCorner + (horizontal * u) + (vertical * v) - origin);
-                pixelColor += rayColor(skyRay, registry, kMaxRayDepth, result);
+        // Render
+        for (int i = imageHeight - 1; i >= 0; --i)
+        {
+            for (int j = 0; j < imageWidth; ++j)
+            {
+                pool.QueueWork([&, i, j]()
+               {
+                   Color pixelColor(0.f, 0.f, 0.f);
+                   auto result = std::make_optional(RayTestResult{});
+                   for (size_t s = 0; s < kNumSamples; ++s)
+                   {
+                       auto u = static_cast<double>(j + hvk::math::getRandom<double, 0.0, 1.0>()) /
+                                (imageWidth - 1);
+                       auto v = static_cast<double>(i + hvk::math::getRandom<double, 0.0, 1.0>()) /
+                                (imageHeight - 1);
+
+                       hvk::Ray skyRay(origin,
+                                       lowerLeftCorner + (horizontal * u) + (vertical * v) - origin);
+                       pixelColor += rayColor(skyRay, registry, kMaxRayDepth, result);
+                   }
+                   const size_t writeIndex = ((imageHeight - 1) - i) * imageWidth + j;
+                   const hvk::Color normalizedHit = 0.5f * hvk::Color(
+                           result->hit.X() / viewportWidth + 1,
+                           result->hit.Y() / viewportHeight + 1,
+                           -result->hit.Z() / 1.5f);
+                   writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
+                   depthBuffer[writeIndex] = (result->depth / kNumSamples);
+                   normalBuffer[writeIndex] = (result->normal / kNumSamples);
+                   reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
+                   hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
+               });
             }
-            const size_t writeIndex = ((imageHeight - 1) - i) * imageWidth + j;
-            const hvk::Color normalizedHit = 0.5f * hvk::Color(
-                result->hit.X() / viewportWidth + 1,
-                result->hit.Y() / viewportHeight + 1,
-                -result->hit.Z() / 1.5f);
-            writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
-            depthBuffer[writeIndex] = (result->depth / kNumSamples);
-            normalBuffer[writeIndex] = (result->normal / kNumSamples);
-            reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
-            hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
         }
     }
 
