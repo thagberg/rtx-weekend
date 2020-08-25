@@ -12,19 +12,22 @@ namespace hvk
     enum class MaterialType
     {
         Diffuse,
-        Metal
+        Metal,
+        Dielectric
     };
 
 
     class Material
     {
     public:
-        Material(MaterialType type, const Color& albedo);
+        Material(MaterialType type, const Color& albedo, double ior);
         MaterialType getType() const;
         Color getAlbedo() const;
+        double getIOR() const;
     private:
         MaterialType mType;
         Color mAlbedo;
+        double mIOR;
     };
 
 
@@ -32,6 +35,13 @@ namespace hvk
                         Ray &scattered);
     bool ScatterMetal(const Ray &r, const Material &material, const HitRecord &hitRecord, Color &attenuation,
                       Ray &scattered);
+    bool ScatterDielectric(
+            const Ray &r,
+            const Material &enterMaterial,
+            double leaveIOR,
+            const HitRecord &hitRecord,
+            Color &attenuation,
+            Ray &scattered);
 }
 
 

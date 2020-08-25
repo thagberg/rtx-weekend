@@ -2,9 +2,10 @@
 
 namespace hvk
 {
-    Material::Material(MaterialType type, const Color &albedo)
+    Material::Material(MaterialType type, const Color &albedo, double ior)
         : mType(type)
         , mAlbedo(albedo)
+        , mIOR(ior)
     {}
 
     MaterialType Material::getType() const
@@ -15,6 +16,11 @@ namespace hvk
     Color Material::getAlbedo() const
     {
         return mAlbedo;
+    }
+
+    double Material::getIOR() const
+    {
+        return mIOR;
     }
 
     bool ScatterDiffuse(const Ray &r, const Material &material, const HitRecord &hitRecord, Color &attenuation,
@@ -39,5 +45,24 @@ namespace hvk
             int dummy = 1 + 1;
         }
         return goodReflect;
+    }
+
+    bool ScatterDielectric(
+            const Ray &r,
+            const Material &enterMaterial,
+            double leaveIOR,
+            const HitRecord &hitRecord,
+            Color &attenuation,
+            Ray &scattered)
+    {
+        Vector refractedDirection = Vector::Refract(
+                r.getDirection().Normalized(),
+                hitRecord.normal,
+                leaveIOR,
+                enterMaterial.getIOR());
+        scattered = Ray(hitRecord.point, refractedDirection);
+        attenuation = enterMaterial.getAlbedo();
+
+        return true;
     }
 }

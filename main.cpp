@@ -29,6 +29,8 @@ const uint16_t kMaxRayDepth = 50;
 const double kMinDepth = 0.01f;
 const double kMaxDepth = 5.f;
 
+const double kIORAir = 1.f;
+
 struct RayTestResult
 {
     Color image;
@@ -49,7 +51,7 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
     hvk::HitRecord earliestHitRecord = {};
     earliestHitRecord.t = std::numeric_limits<double>::max();
     hvk::Sphere earliestSphere;
-    hvk::Material earliestMaterial(hvk::MaterialType::Diffuse, hvk::Color(0.f, 0.f, 0.f));
+    hvk::Material earliestMaterial(hvk::MaterialType::Diffuse, hvk::Color(0.f, 0.f, 0.f), -1.f);
 
     auto sphereView = registry.view<hvk::Sphere, hvk::Material>();
     for (const auto entity : sphereView)
@@ -115,6 +117,10 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
             {
                 return hvk::Color(0.f, 0.f, 1.f);
             }
+        }
+        else if (earliestMaterial.getType() == hvk::MaterialType::Dielectric)
+        {
+            shouldContinue = hvk::ScatterDielectric(r, earliestMaterial, kIORAir, earliestHitRecord, attenuation, scattered);
         }
 
         if (shouldContinue)
@@ -267,11 +273,11 @@ int main() {
     // World / Scene
     auto sphereEntity = registry.create();
     registry.emplace<hvk::Sphere>(sphereEntity, hvk::Vector(0.0f, 0.0f, -1.f), 0.5f);
-    registry.emplace<hvk::Material>(sphereEntity, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 0.f));
+    registry.emplace<hvk::Material>(sphereEntity, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 0.f), -1.f);
 
     auto groundEntity = registry.create();
     registry.emplace<hvk::Sphere>(groundEntity, hvk::Vector(0, -100.5f, -1.f), 100.f);
-    registry.emplace<hvk::Material>(groundEntity, hvk::MaterialType::Diffuse, hvk::Color(0.f, 1.f, 0.f));
+    registry.emplace<hvk::Material>(groundEntity, hvk::MaterialType::Diffuse, hvk::Color(0.f, 1.f, 0.f), -1.f);
 
 //    auto metalSphere1 = registry.create();
 //    registry.emplace<hvk::Sphere>(metalSphere1, hvk::Vector(-1.0f, 0.f, -1.f), 0.5f);
@@ -279,11 +285,19 @@ int main() {
 
     auto metalSphere2 = registry.create();
     registry.emplace<hvk::Sphere>(metalSphere2, hvk::Vector(1.0f, 0.f, -1.f), 0.5f);
-    registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(0.1f, 0.1f, 0.1f));
+    registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(0.1f, 0.1f, 0.1f), -1.f);
 
     auto behindSphere = registry.create();
     registry.emplace<hvk::Sphere>(behindSphere, hvk::Vector(0.5f, 0.0f, 1.f), 0.5f);
-    registry.emplace<hvk::Material>(behindSphere, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 1.f));
+    registry.emplace<hvk::Material>(behindSphere, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 1.f), -1.f);
+
+    auto glassSphere = registry.create();
+    registry.emplace<hvk::Sphere>(glassSphere, hvk::Vector(2.f, 0.f, -1.f), 0.5f);
+    registry.emplace<hvk::Material>(glassSphere, hvk::MaterialType::Dielectric, hvk::Color(0.8f, 0.8f, 0.8f), 1.5);
+
+    auto smallGlass = registry.create();
+    registry.emplace<hvk::Sphere>(smallGlass, hvk::Vector(0.3f, -.3f, -0.2f), 0.2f);
+    registry.emplace<hvk::Material>(smallGlass, hvk::MaterialType::Dielectric, hvk::Color(1.f, 1.f, 1.f), 1.5);
 
 //    auto diffuseBox = registry.create();
 //    registry.emplace<hvk::Box>(
@@ -305,7 +319,7 @@ int main() {
             hvk::Plane(hvk::Vector(-1.5f, 0.25f, -3.f), hvk::Vector(0.f, 0.f, -1.f)),
             hvk::Plane(hvk::Vector(-2.5f, 0.25f, -2.f), hvk::Vector(-1.f, 0.f, 0.f)),
             hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
-    registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f));
+    registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
     // Render
     for (int i = imageHeight-1; i >= 0; --i)
