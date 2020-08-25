@@ -21,8 +21,6 @@ namespace hvk
 
         std::optional<float> SphereRayIntersect(const Sphere& sphere, const Ray& ray)
         {
-            Vector rayToSphere = ray.getOrigin() - sphere.getCenter();
-
             // This is the quadratic equation:
             //  (V . V)t^2 + (S . V)t + (S . S) - r^2 = 0
             // Where:
@@ -36,6 +34,7 @@ namespace hvk
             // From the equation for a sphere which is:
             //  x^2 + y^2 + z^2 = r^2
 
+            const Vector rayToSphere = ray.getOrigin() - sphere.getCenter();
             const auto r = sphere.getRadius();
             const auto a = 1.f; // Ray direction is normalized, so dot(R, R) will always be 1
             const auto b = 2.0 * Vector::Dot(rayToSphere, ray.getDirection());
@@ -44,10 +43,24 @@ namespace hvk
             const auto discriminant = b*b - 4*a*c;
             if (discriminant > 0)
             {
-                float rootOne = (-b - sqrt(discriminant)) / (2.0 * a);
-                float rootTwo = (-b + sqrt(discriminant)) / (2.0 * a);
-                float closestRoot = std::min(rootOne, rootTwo);
-                return std::optional{ closestRoot };
+                float root = sqrt(discriminant);
+                const auto epsilon = 5 * std::numeric_limits<decltype(root)>::epsilon();
+                float rootOne = (-b - root) / (2.0 * a);
+                float rootTwo = (-b + root) / (2.0 * a);
+//                return std::optional{ std::min(rootOne, rootTwo) };
+                if (rootOne > epsilon && rootTwo > epsilon)
+                {
+                    float closestRoot = std::min(rootOne, rootTwo);
+                    return std::optional{ closestRoot };
+                }
+                else if (rootOne > epsilon)
+                {
+                    return std::optional{ rootOne };
+                }
+                else if (rootTwo > epsilon)
+                {
+                    return std::optional{ rootTwo };
+                }
             }
             return std::nullopt;
         }

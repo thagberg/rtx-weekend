@@ -24,7 +24,7 @@ using Color = hvk::Vector;
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 1000;
+const uint16_t kNumSamples = 100;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
@@ -32,7 +32,7 @@ const double kMaxDepth = 5.f;
 
 const double kIORAir = 1.f;
 
-const uint8_t kNumThreads = 16;
+const uint8_t kNumThreads = 24;
 
 struct RayTestResult
 {
@@ -53,7 +53,6 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
 
     hvk::HitRecord earliestHitRecord = {};
     earliestHitRecord.t = std::numeric_limits<double>::max();
-    hvk::Sphere earliestSphere;
     hvk::Material earliestMaterial(hvk::MaterialType::Diffuse, hvk::Color(0.f, 0.f, 0.f), -1.f);
 
     auto sphereView = registry.view<hvk::Sphere, hvk::Material>();
@@ -67,6 +66,11 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
             earliestHitRecord.t = intersection.value();
             earliestHitRecord.point = r.PointAt(earliestHitRecord.t);
             earliestHitRecord.normal = (earliestHitRecord.point - sphere.getCenter()).Normalized();
+//            if (hvk::Vector::Dot(earliestHitRecord.normal, r.getDirection().Normalized()) > 0.f)
+//            {
+//                int blah = 5 + 5;
+//                std::cout << blah << std::endl;
+//            }
             earliestMaterial = material;
         }
     }
@@ -299,8 +303,12 @@ int main() {
     registry.emplace<hvk::Material>(glassSphere, hvk::MaterialType::Dielectric, hvk::Color(0.8f, 0.8f, 0.8f), 1.5);
 
     auto smallGlass = registry.create();
-    registry.emplace<hvk::Sphere>(smallGlass, hvk::Vector(0.3f, -.3f, -0.2f), 0.2f);
+    registry.emplace<hvk::Sphere>(smallGlass, hvk::Vector(0.3f, -.3f, -0.4f), 0.2f);
     registry.emplace<hvk::Material>(smallGlass, hvk::MaterialType::Dielectric, hvk::Color(1.f, 1.f, 1.f), 1.5);
+
+    auto smallGlass2 = registry.create();
+    registry.emplace<hvk::Sphere>(smallGlass2, hvk::Vector(-0.4f, -.3f, -0.3f), 0.2f);
+    registry.emplace<hvk::Material>(smallGlass2, hvk::MaterialType::Dielectric, hvk::Color(1.f, 1.f, 1.f), 1.5);
 
 //    auto diffuseBox = registry.create();
 //    registry.emplace<hvk::Box>(
@@ -371,10 +379,6 @@ int main() {
         std::make_optional(normalBuffer),
         std::make_optional(reflectBuffer),
         std::make_optional(hitBuffer));
-//    for (const auto& c : writeOutBuffer)
-//    {
-//        writeColor(c);
-//    }
 
     return 0;
 }
