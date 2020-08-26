@@ -126,6 +126,12 @@ namespace hvk
     Vector Vector::Refract(const Vector &incident, const Vector &normal, double iorLeave, double iorEnter)
     {
         auto IN = Vector::Dot(incident.Normalized(), normal.Normalized());
+        if (IN > 0.f)
+        {
+            double temp = iorLeave;
+            iorLeave = iorEnter;
+            iorEnter = temp;
+        }
         // assert(IN >= 0.f);
         double eta = iorLeave / iorEnter;
         double k = 1 - (eta * eta) * (1 - (IN * IN));
