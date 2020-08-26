@@ -36,7 +36,7 @@ namespace hvk
                       Ray &scattered)
     {
         Vector reflectedDirection = Vector::Reflect(r.getDirection(), hitRecord.normal);
-        scattered = Ray(hitRecord.point, reflectedDirection);
+        scattered = Ray(hitRecord.point + (0.001f * reflectedDirection), reflectedDirection);
         attenuation = material.getAlbedo();
         auto reflectDot = Vector::Dot(reflectedDirection, hitRecord.normal);
         bool goodReflect = reflectDot > 0;
@@ -60,7 +60,7 @@ namespace hvk
                 hitRecord.normal,
                 leaveIOR,
                 enterMaterial.getIOR());
-        scattered = Ray(hitRecord.point, refractedDirection);
+        scattered = Ray(hitRecord.point + (0.001f * refractedDirection), refractedDirection);
         attenuation = enterMaterial.getAlbedo();
 
         return true;
