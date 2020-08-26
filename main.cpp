@@ -25,7 +25,7 @@ using Color = hvk::Vector;
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 500;
+const uint16_t kNumSamples = 200;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
@@ -133,6 +133,8 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
 
         if (shouldContinue)
         {
+//            // add biasing
+//            scattered = hvk::Ray(scattered.getOrigin() + (0.01) * earliestHitRecord.normal.Normalized(), scattered.getDirection());
             return attenuation * rayColor(scattered, registry, depth-1, outResult);
         }
 
@@ -256,7 +258,7 @@ int main() {
 
     // Image setup
     const auto aspectRatio = 16.f / 9.f;
-    const uint16_t imageWidth = 1600;
+    const uint16_t imageWidth = 600;
     const uint16_t imageHeight = static_cast<uint16_t>(imageWidth / aspectRatio);
     std::vector<Color> writeOutBuffer;
     writeOutBuffer.resize(imageHeight * imageWidth);
@@ -271,10 +273,10 @@ int main() {
 
     // Camera setup
     const hvk::Camera camera(
-            hvk::Vector(-2.f, 1.f, 1.f),
+            hvk::Vector(-1.5f, .6f, 0.8f),
             hvk::Vector(0.f, 0.f, -1.f),
             hvk::Vector(0.f, 1.f, 0.f),
-            90.f,
+            60.f,
             aspectRatio,
             0.001f,
             2.f);
@@ -294,7 +296,7 @@ int main() {
 
     auto metalSphere2 = registry.create();
     registry.emplace<hvk::Sphere>(metalSphere2, hvk::Vector(1.0f, 0.f, -1.f), 0.5f);
-    registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(0.9f, 0.9f, 0.9f), -1.f);
+    registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(1.f, 1.f, 1.f), -1.f);
 
     auto behindSphere = registry.create();
     registry.emplace<hvk::Sphere>(behindSphere, hvk::Vector(0.5f, 0.0f, 1.f), 0.5f);
@@ -309,8 +311,12 @@ int main() {
     registry.emplace<hvk::Material>(smallGlass, hvk::MaterialType::Dielectric, hvk::Color(1.f, 1.f, 1.f), 1.5);
 
     auto smallGlass2 = registry.create();
-    registry.emplace<hvk::Sphere>(smallGlass2, hvk::Vector(-0.4f, -.3f, -0.3f), 0.2f);
+    registry.emplace<hvk::Sphere>(smallGlass2, hvk::Vector(-0.32f, -.3f, -0.42f), 0.2f);
     registry.emplace<hvk::Material>(smallGlass2, hvk::MaterialType::Dielectric, hvk::Color(1.f, 1.f, 1.f), 1.5);
+
+    auto smallMetalSphere = registry.create();
+    registry.emplace<hvk::Sphere>(smallMetalSphere, hvk::Vector(-0.68f, -.3f, -0.69f), 0.25f);
+    registry.emplace<hvk::Material>(smallMetalSphere, hvk::MaterialType::Metal, hvk::Color(0.7f, 0.2f, 0.7f), -1.f);
 
 //    auto diffuseBox = registry.create();
 //    registry.emplace<hvk::Box>(

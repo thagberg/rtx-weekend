@@ -44,7 +44,7 @@ namespace hvk
             if (discriminant > 0)
             {
                 float root = sqrt(discriminant);
-                const auto epsilon = 5 * std::numeric_limits<decltype(root)>::epsilon();
+                const auto epsilon = std::numeric_limits<decltype(root)>::epsilon();
                 float rootOne = (-b - root) / (2.0 * a);
                 float rootTwo = (-b + root) / (2.0 * a);
 //                return std::optional{ std::min(rootOne, rootTwo) };
