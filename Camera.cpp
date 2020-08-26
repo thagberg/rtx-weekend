@@ -3,8 +3,15 @@
 
 namespace hvk
 {
-    Camera::Camera(double verticalFov, double aspectRatio, double near, double far)
-        : mOrigin(0.f, 0.f, 0.5f)
+    Camera::Camera(
+        Vector lookFrom,
+        Vector lookAt,
+        Vector up,
+        double verticalFov,
+        double aspectRatio,
+        double near,
+        double far)
+        : mOrigin(0.f, 0.f, 0.0f)
         , mHorizontal()
         , mVertical()
         , mLowerLeft()
@@ -14,11 +21,14 @@ namespace hvk
         auto viewportHeight = far * h;
         auto viewportWidth = aspectRatio * viewportHeight;
 
-        auto focalLength = 1.f;
+        auto w = (lookFrom - lookAt).Normalized();
+        auto u = Vector::Cross(up, w).Normalized();
+        auto v = Vector::Cross(w, u);
 
-        mHorizontal = Vector(viewportWidth, 0.f, 0.f);
-        mVertical = Vector(0.f, viewportHeight, 0.f);
-        mLowerLeft = mOrigin - (mHorizontal / 2) - (mVertical / 2) - Vector(0.f, 0.f, focalLength);
+        mOrigin = lookFrom;
+        mHorizontal = viewportWidth * u;
+        mVertical = viewportHeight * v;
+        mLowerLeft = mOrigin - (mHorizontal / 2) - (mVertical / 2) - w;
     }
 
     Ray Camera::GetRay(double u, double v) const

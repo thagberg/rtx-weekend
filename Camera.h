@@ -9,7 +9,14 @@ namespace hvk
     class Camera
     {
     public:
-        Camera(double verticalFov, double aspectRatio, double near, double far);
+        Camera(
+            Vector lookFrom,
+            Vector lookAt,
+            Vector up,
+            double verticalFov,
+            double aspectRatio,
+            double near,
+            double far);
         Ray GetRay(double u, double v) const;
 
     private:

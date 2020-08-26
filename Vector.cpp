@@ -40,6 +40,11 @@ namespace hvk
         return XMVectorGetX(XMVector3Dot(mNativeVec, rhs.mNativeVec));
     }
 
+    Vector Vector::Cross(const Vector &rhs) const
+    {
+        return Vector(XMVector3Cross(mNativeVec, rhs.mNativeVec));
+    }
+
     Vector Vector::Normalized() const
     {
         return Vector(XMVector3Normalize(mNativeVec));
@@ -96,6 +101,11 @@ namespace hvk
     float Vector::Dot(const Vector& lhs, const Vector& rhs)
     {
         return lhs.Dot(rhs);
+    }
+
+    Vector Vector::Cross(const Vector &lhs, const Vector &rhs)
+    {
+        return lhs.Cross(rhs);
     }
 
     Vector Vector::RandomUnit()

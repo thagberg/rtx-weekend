@@ -25,7 +25,7 @@ using Color = hvk::Vector;
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 100;
+const uint16_t kNumSamples = 500;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
@@ -80,20 +80,20 @@ Color rayColor(const hvk::Ray& r, entt::registry& registry, int depth, std::opti
     // on a successful hit test we'll need:
     //  t
     //  the normal of the plane the intersection occurs at
-    auto boxView = registry.view<hvk::Box, hvk::Material>();
-    for (const auto entity : boxView)
-    {
-        const auto& box = boxView.get<hvk::Box>(entity);
-        const auto& material = boxView.get<hvk::Material>(entity);
-        auto intersection = hvk::hit::BoxRayIntersect(box, r);
-        if (intersection.has_value() && intersection.value().second > 0.f && intersection.value().second < earliestHitRecord.t)
-        {
-            earliestHitRecord.t = intersection.value().second;
-            earliestHitRecord.point = r.PointAt(earliestHitRecord.t);
-            earliestHitRecord.normal = box.getSide(intersection.value().first).getDirection().Normalized();
-            earliestMaterial = material;
-        }
-    }
+    // auto boxView = registry.view<hvk::Box, hvk::Material>();
+    // for (const auto entity : boxView)
+    // {
+    //     const auto& box = boxView.get<hvk::Box>(entity);
+    //     const auto& material = boxView.get<hvk::Material>(entity);
+    //     auto intersection = hvk::hit::BoxRayIntersect(box, r);
+    //     if (intersection.has_value() && intersection.value().second > 0.f && intersection.value().second < earliestHitRecord.t)
+    //     {
+    //         earliestHitRecord.t = intersection.value().second;
+    //         earliestHitRecord.point = r.PointAt(earliestHitRecord.t);
+    //         earliestHitRecord.normal = box.getSide(intersection.value().first).getDirection().Normalized();
+    //         earliestMaterial = material;
+    //     }
+    // }
 
     if (earliestHitRecord.t < std::numeric_limits<double>::max())
     {
@@ -256,7 +256,7 @@ int main() {
 
     // Image setup
     const auto aspectRatio = 16.f / 9.f;
-    const uint16_t imageWidth = 400;
+    const uint16_t imageWidth = 1600;
     const uint16_t imageHeight = static_cast<uint16_t>(imageWidth / aspectRatio);
     std::vector<Color> writeOutBuffer;
     writeOutBuffer.resize(imageHeight * imageWidth);
@@ -270,7 +270,14 @@ int main() {
     hitBuffer.resize(imageHeight * imageWidth);
 
     // Camera setup
-    const hvk::Camera camera(90.f, aspectRatio, 0.001f, 2.f);
+    const hvk::Camera camera(
+            hvk::Vector(-2.f, 1.f, 1.f),
+            hvk::Vector(0.f, 0.f, -1.f),
+            hvk::Vector(0.f, 1.f, 0.f),
+            90.f,
+            aspectRatio,
+            0.001f,
+            2.f);
 
     // World / Scene
     auto sphereEntity = registry.create();
@@ -285,9 +292,9 @@ int main() {
 //    registry.emplace<hvk::Sphere>(metalSphere1, hvk::Vector(-1.0f, 0.f, -1.f), 0.5f);
 //    registry.emplace<hvk::Material>(metalSphere1, hvk::MaterialType::Metal, hvk::Color(1.f, 1.f, 1.f));
 
-    // auto metalSphere2 = registry.create();
-    // registry.emplace<hvk::Sphere>(metalSphere2, hvk::Vector(1.0f, 0.f, -1.f), 0.5f);
-    // registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(0.1f, 0.1f, 0.1f), -1.f);
+    auto metalSphere2 = registry.create();
+    registry.emplace<hvk::Sphere>(metalSphere2, hvk::Vector(1.0f, 0.f, -1.f), 0.5f);
+    registry.emplace<hvk::Material>(metalSphere2, hvk::MaterialType::Metal, hvk::Color(0.9f, 0.9f, 0.9f), -1.f);
 
     auto behindSphere = registry.create();
     registry.emplace<hvk::Sphere>(behindSphere, hvk::Vector(0.5f, 0.0f, 1.f), 0.5f);
@@ -316,16 +323,16 @@ int main() {
 //            hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
 //    registry.emplace<hvk::Material>(diffuseBox, hvk::MaterialType::Diffuse, hvk::Color(0.66, 0.2, 0.8));
 
-    auto metalBox = registry.create();
-    registry.emplace<hvk::Box>(
-            metalBox,
-            hvk::Plane(hvk::Vector(-1.5f, 1.f, -2.f), hvk::Vector(0.f, 1.f, 0.f)),
-            hvk::Plane(hvk::Vector(-1.5f, -0.5f, -2.f), hvk::Vector(0.f, -1.f, 0.f)),
-            hvk::Plane(hvk::Vector(-1.5f, 0.25f, 0.f), hvk::Vector(0.f, 0.f, 1.f)),
-            hvk::Plane(hvk::Vector(-1.5f, 0.25f, -3.f), hvk::Vector(0.f, 0.f, -1.f)),
-            hvk::Plane(hvk::Vector(-2.5f, 0.25f, -2.f), hvk::Vector(-1.f, 0.f, 0.f)),
-            hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
-    registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
+    // auto metalBox = registry.create();
+    // registry.emplace<hvk::Box>(
+    //         metalBox,
+    //         hvk::Plane(hvk::Vector(-1.5f, 1.f, -2.f), hvk::Vector(0.f, 1.f, 0.f)),
+    //         hvk::Plane(hvk::Vector(-1.5f, -0.5f, -2.f), hvk::Vector(0.f, -1.f, 0.f)),
+    //         hvk::Plane(hvk::Vector(-1.5f, 0.25f, 0.f), hvk::Vector(0.f, 0.f, 1.f)),
+    //         hvk::Plane(hvk::Vector(-1.5f, 0.25f, -3.f), hvk::Vector(0.f, 0.f, -1.f)),
+    //         hvk::Plane(hvk::Vector(-2.5f, 0.25f, -2.f), hvk::Vector(-1.f, 0.f, 0.f)),
+    //         hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
+    // registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
     {
         // Create thread pool

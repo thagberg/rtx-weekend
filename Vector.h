@@ -41,7 +41,9 @@ namespace hvk
         float Z() const;
 
         float Dot(const Vector& rhs) const;
+        Vector Cross(const Vector& rhs) const;
         static float Dot(const Vector& lhs, const Vector& rhs);
+        static Vector Cross(const Vector& lhs, const Vector& rhs);
         static Vector Reflect(const Vector& v, const Vector& normal);
         static Vector Refract(
                 const Vector& incident,
