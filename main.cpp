@@ -18,6 +18,7 @@ using namespace DirectX;
 #include "HitRecord.h"
 #include "Box.h"
 #include "ThreadPool.h"
+#include "Camera.h"
 
 using Color = hvk::Vector;
 
@@ -269,13 +270,7 @@ int main() {
     hitBuffer.resize(imageHeight * imageWidth);
 
     // Camera setup
-    const auto viewportHeight = 2.f;
-    const auto viewportWidth = aspectRatio * viewportHeight;
-    const auto focalLength = 1.f;
-    const hvk::Vector origin(0.f, 0.f, 0.5f);
-    const hvk::Vector horizontal(viewportWidth, 0.f, 0.f);
-    const hvk::Vector vertical(0.f, viewportHeight, 0.f);
-    const auto lowerLeftCorner = origin - (horizontal / 2) - (vertical / 2) - hvk::Vector(0.f, 0.f, focalLength);
+    const hvk::Camera camera(90.f, aspectRatio, 0.001f, 2.f);
 
     // World / Scene
     auto sphereEntity = registry.create();
@@ -352,20 +347,19 @@ int main() {
                        auto v = static_cast<double>(i + hvk::math::getRandom<double, 0.0, 1.0>()) /
                                 (imageHeight - 1);
 
-                       hvk::Ray skyRay(origin,
-                                       lowerLeftCorner + (horizontal * u) + (vertical * v) - origin);
+                       hvk::Ray skyRay = camera.GetRay(u, v);
                        pixelColor += rayColor(skyRay, registry, kMaxRayDepth, result);
                    }
                    const size_t writeIndex = ((imageHeight - 1) - i) * imageWidth + j;
-                   const hvk::Color normalizedHit = 0.5f * hvk::Color(
-                           result->hit.X() / viewportWidth + 1,
-                           result->hit.Y() / viewportHeight + 1,
-                           -result->hit.Z() / 1.5f);
+                   // const hvk::Color normalizedHit = 0.5f * hvk::Color(
+                   //         result->hit.X() / viewportWidth + 1,
+                   //         result->hit.Y() / viewportHeight + 1,
+                   //         -result->hit.Z() / 1.5f);
                    writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
                    depthBuffer[writeIndex] = (result->depth / kNumSamples);
                    normalBuffer[writeIndex] = (result->normal / kNumSamples);
                    reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
-                   hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
+                   // hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
                });
             }
         }
@@ -378,7 +372,8 @@ int main() {
         std::make_optional(depthBuffer),
         std::make_optional(normalBuffer),
         std::make_optional(reflectBuffer),
-        std::make_optional(hitBuffer));
+        std::nullopt);
+        // std::make_optional(hitBuffer));
 
     return 0;
 }

@@ -17,6 +17,8 @@ namespace hvk
             static std::uniform_real_distribution<T> distribution(lower, upper);
             return distribution(generator);
         }
+
+        double degreesToRadians(double degrees);
     }
 }
 
