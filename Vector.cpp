@@ -142,7 +142,7 @@ namespace hvk
         }
         else
         {
-            double reflectProbability = _SchlickFresnelApproximation(IN, eta);
+            double reflectProbability = _SchlickFresnelApproximation(abs(IN), iorLeave / iorEnter);
             if (math::getRandom<double, 0.f, 1.f>() < reflectProbability)
             {
                 return Reflect(incident, normal);
