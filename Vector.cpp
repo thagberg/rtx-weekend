@@ -111,6 +111,18 @@ namespace hvk
         return v - 2 * Vector::Dot(v, normal) * normal;
     }
 
+    double _SchlickFresnelApproximation(double cosineTheta, double refraction)
+    {
+        // Schlick Approximation formula:
+        //  F = F0 + (1 - F0) * (1 - cos(theta))^5
+        //  F0 = (n - 1)^2 / (n` + 1)^2
+        // cos(theta) = I . N
+
+        auto f0 = (1 - refraction) / (1 + refraction);
+        f0 = f0 * f0;
+        return f0 + (1 - f0) * pow((1 - cosineTheta), 5);
+    }
+
     Vector Vector::Refract(const Vector &incident, const Vector &normal, double iorLeave, double iorEnter)
     {
         auto IN = Vector::Dot(incident.Normalized(), normal.Normalized());
@@ -124,6 +136,11 @@ namespace hvk
         }
         else
         {
+            double reflectProbability = _SchlickFresnelApproximation(IN, eta);
+            if (math::getRandom<double, 0.f, 1.f>() < reflectProbability)
+            {
+                return Reflect(incident, normal);
+            }
             return eta * incident + (eta * IN - sqrt(k)) * normal;
         }
     }
