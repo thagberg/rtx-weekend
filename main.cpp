@@ -3,12 +3,15 @@
 #include <optional>
 
 #if defined(WIN32)
+#define NOMINMAX
+#include <windows.h>
 #include <DirectXMath.h>
 
 using namespace DirectX;
 #endif
 
 #include <entt/entt.hpp>
+#include <d3d12boiler/d3d12boiler.h>
 
 #include "Ray.h"
 #include "Sphere.h"
@@ -25,7 +28,7 @@ using Color = hvk::Vector;
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 200;
+const uint16_t kNumSamples = 400;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
@@ -33,7 +36,7 @@ const double kMaxDepth = 5.f;
 
 const double kIORAir = 1.f;
 
-const uint8_t kNumThreads = 24;
+const uint8_t kNumThreads = 16;
 
 struct RayTestResult
 {
@@ -269,13 +272,106 @@ std::vector<std::vector<Color>> buffers;
     }
 }
 
-int main() {
-    entt::registry registry;
+// Main message handler for the sample.
+LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message)
+    {
+        case WM_CREATE:
+        {
+            // Save the DXSample* passed in to CreateWindow.
+            LPCREATESTRUCT pCreateStruct = reinterpret_cast<LPCREATESTRUCT>(lParam);
+            SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCreateStruct->lpCreateParams));
+        }
+            return 0;
 
-    // Image setup
+        // case WM_KEYDOWN:
+        //     if (pSample)
+        //     {
+        //         pSample->OnKeyDown(static_cast<UINT8>(wParam));
+        //     }
+        //     return 0;
+        //
+        // case WM_KEYUP:
+        //     if (pSample)
+        //     {
+        //         pSample->OnKeyUp(static_cast<UINT8>(wParam));
+        //     }
+        //     return 0;
+        //
+        // case WM_PAINT:
+        //     if (pSample)
+        //     {
+        //         pSample->OnUpdate();
+        //         pSample->OnRender();
+        //     }
+        //     return 0;
+        //
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+    }
+
+    // Handle any messages the switch statement didn't.
+    return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+
+int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
+{
     const auto aspectRatio = 16.f / 9.f;
     const uint16_t imageWidth = 600;
     const uint16_t imageHeight = static_cast<uint16_t>(imageWidth / aspectRatio);
+
+    // Initialize the window class.
+    WNDCLASSEX windowClass = { 0 };
+    windowClass.cbSize = sizeof(WNDCLASSEX);
+    windowClass.style = CS_HREDRAW | CS_VREDRAW;
+    windowClass.lpfnWndProc = WindowProc;
+    windowClass.hInstance = hInstance;
+    windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+    windowClass.lpszClassName = "DXRWeekendClass";
+    RegisterClassEx(&windowClass);
+
+    RECT windowRect = { 0, 0, static_cast<LONG>(imageWidth), static_cast<LONG>(imageHeight) };
+    AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
+
+    // Create the window and store a handle to it.
+
+    uint32_t windowWidth = windowRect.right - windowRect.left;
+    uint32_t windowHeight = windowRect.bottom - windowRect.top;
+
+    auto hwnd = CreateWindow(
+            windowClass.lpszClassName,
+            "DXR Weekend",
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            windowWidth,
+            windowHeight,
+            nullptr,        // We have no parent window.
+            nullptr,        // We aren't using menus.
+            hInstance,
+            nullptr);       // App data, probably want to pass a pointer to something later
+
+    ShowWindow(hwnd, nCmdShow);
+
+    ComPtr<IDXGIFactory4> factory;
+    ComPtr<IDXGIAdapter1> hardwareAdapter;
+    ComPtr<ID3D12Device> device;
+    ComPtr<ID3D12CommandQueue> commandQueue;
+    ComPtr<IDXGISwapChain3> swapchain;
+
+	HRESULT hr = S_OK;
+	hr = hvk::boiler::CreateFactory(factory);
+	hvk::boiler::GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+	hr = hvk::boiler::CreateDevice(factory, hardwareAdapter, device);
+	hr = hvk::boiler::CreateCommandQueue(device, commandQueue);
+	hr = hvk::boiler::CreateSwapchain(commandQueue, factory, hwnd, 2, windowWidth, windowHeight, swapchain);
+
+    entt::registry registry;
+
+    // Image setup
     std::vector<Color> writeOutBuffer;
     writeOutBuffer.resize(imageHeight * imageWidth);
     std::vector<Color> normalBuffer;
