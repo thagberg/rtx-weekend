@@ -3,6 +3,7 @@
 //
 
 #include "ThreadPool.h"
+#include <windows.h>
 
 namespace hvk
 {
@@ -28,9 +29,10 @@ namespace hvk
     {
         while (true)
         {
-            while(mQueue.empty())
+            if (mQueue.empty())
             {
-
+                Sleep(20);
+                continue;
             }
 
             std::unique_lock<std::mutex> lock(mMutex, std::defer_lock);
