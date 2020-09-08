@@ -23,12 +23,18 @@ using namespace DirectX;
 #include "ThreadPool.h"
 #include "Camera.h"
 
+struct Vertex
+{
+	DirectX::XMFLOAT3 pos;
+	DirectX::XMFLOAT2 TexCoord;
+};
+
 using Color = hvk::Vector;
 
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 400;
+const uint16_t kNumSamples = 100;
 const uint16_t kMaxRayDepth = 50;
 
 const double kMinDepth = 0.01f;
@@ -37,6 +43,21 @@ const double kMaxDepth = 5.f;
 const double kIORAir = 1.f;
 
 const uint8_t kNumThreads = 16;
+const uint8_t kFramebuffers = 2;
+
+const float kClearColor[] = { 1.f, 0.f, 1.f, 1.f };
+
+const size_t kNumVertices = 6;
+const Vertex kVertices[kNumVertices] =
+{
+	{DirectX::XMFLOAT3(-1.f, -1.f, 0.5f), DirectX::XMFLOAT2(0.f, 1.f)},
+	{DirectX::XMFLOAT3(-1.f, 1.f, 0.5f), DirectX::XMFLOAT2(0.f, 0.f)},
+	{DirectX::XMFLOAT3(1.f, -1.f, 0.5f), DirectX::XMFLOAT2(1.f, 1.f)},
+	{DirectX::XMFLOAT3(1.f, -1.f, 0.5f), DirectX::XMFLOAT2(1.f, 1.f)},
+	{DirectX::XMFLOAT3(-1.f, 1.f, 0.5f), DirectX::XMFLOAT2(0.f, 0.f)},
+	{DirectX::XMFLOAT3(1.f, 1.f, 0.5f), DirectX::XMFLOAT2(1.f, 0.f)},
+
+};
 
 struct RayTestResult
 {
@@ -272,6 +293,22 @@ std::vector<std::vector<Color>> buffers;
     }
 }
 
+bool LoadShaderByteCode(LPCWSTR filename, std::vector<uint8_t>& byteCodeOut)
+{
+	DWORD codeSize;
+	DWORD bytesRead;
+
+	HANDLE shaderHandle = CreateFile2(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+	codeSize = GetFileSize(shaderHandle, nullptr);
+	byteCodeOut.resize(codeSize);
+	bool readSuccess = ReadFile(shaderHandle, byteCodeOut.data(), codeSize, &bytesRead, nullptr);
+	assert(readSuccess);
+	assert(bytesRead == codeSize);
+    CloseHandle(shaderHandle);
+
+	return readSuccess && (bytesRead == codeSize);
+}
+
 // Main message handler for the sample.
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -333,6 +370,8 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     windowClass.lpszClassName = "DXRWeekendClass";
     RegisterClassEx(&windowClass);
 
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(1));
+
     RECT windowRect = { 0, 0, static_cast<LONG>(imageWidth), static_cast<LONG>(imageHeight) };
     AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
@@ -359,13 +398,18 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ComPtr<IDXGIFactory4> factory;
     ComPtr<IDXGIAdapter1> hardwareAdapter;
     ComPtr<ID3D12Device> device;
+    ComPtr<ID3D12CommandAllocator> commandAllocator;
     ComPtr<ID3D12CommandQueue> commandQueue;
     ComPtr<IDXGISwapChain3> swapchain;
+    ComPtr<ID3D12RootSignature> rootSig;
+    ComPtr<ID3D12PipelineState> pipelineState;
+    ComPtr<ID3D12GraphicsCommandList> commandList;
 
 	HRESULT hr = S_OK;
 	hr = hvk::boiler::CreateFactory(factory);
 	hvk::boiler::GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 	hr = hvk::boiler::CreateDevice(factory, hardwareAdapter, device);
+    hr = hvk::boiler::CreateCommandAllocator(device, commandAllocator);
 	hr = hvk::boiler::CreateCommandQueue(device, commandQueue);
 	hr = hvk::boiler::CreateSwapchain(commandQueue, factory, hwnd, 2, windowWidth, windowHeight, swapchain);
 
@@ -382,6 +426,115 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     depthBuffer.resize(imageHeight * imageWidth);
     std::vector<Color> hitBuffer;
     hitBuffer.resize(imageHeight * imageWidth);
+
+    // create descriptor table
+    D3D12_DESCRIPTOR_RANGE screenSrvRange = {};
+    screenSrvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    screenSrvRange.NumDescriptors = 1;
+    screenSrvRange.BaseShaderRegister = 0;
+    screenSrvRange.RegisterSpace = 0;
+    screenSrvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    D3D12_ROOT_PARAMETER screenParam = {};
+    screenParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    screenParam.DescriptorTable.NumDescriptorRanges = 1;
+    screenParam.DescriptorTable.pDescriptorRanges = &screenSrvRange;
+    screenParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	D3D12_STATIC_SAMPLER_DESC bilinearSampler = {};
+	bilinearSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	bilinearSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	bilinearSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	bilinearSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	bilinearSampler.MipLODBias = 0.f;
+	bilinearSampler.MaxAnisotropy = 1;
+	bilinearSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	bilinearSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	bilinearSampler.MinLOD = 0;
+	bilinearSampler.MaxLOD = 0;
+	bilinearSampler.ShaderRegister = 0;
+	bilinearSampler.RegisterSpace = 0;
+	bilinearSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    // create root signature
+    hr = hvk::boiler::CreateRootSignature(device, { screenParam }, { bilinearSampler }, rootSig);
+
+    // create PSO
+    D3D12_INPUT_ELEMENT_DESC vertexInputs[] =
+    {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 3 * sizeof(float), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+    };
+    D3D12_INPUT_LAYOUT_DESC vertexLayout = {};
+    vertexLayout.NumElements = _countof(vertexInputs);
+    vertexLayout.pInputElementDescs = vertexInputs;
+
+    std::vector<uint8_t> displayVertexByteCode;
+    std::vector<uint8_t> displayPixelByteCode;
+    bool shaderLoadSuccess = LoadShaderByteCode(L"DisplayVertex.cso", displayVertexByteCode);
+    assert(shaderLoadSuccess);
+    shaderLoadSuccess = LoadShaderByteCode(L"DisplayPixel.cso", displayPixelByteCode);
+
+    hr = hvk::boiler::CreateGraphicsPipelineState(
+        device, 
+        vertexLayout, 
+        rootSig, 
+        displayVertexByteCode.data(), 
+        displayVertexByteCode.size(), 
+        displayPixelByteCode.data(), 
+        displayPixelByteCode.size(), 
+        pipelineState);
+
+    // create command list
+    hr = hvk::boiler::CreateCommandList(device, commandAllocator, pipelineState, commandList);
+    commandList->Close();
+
+    ComPtr<ID3D12DescriptorHeap> rtvHeap;
+    ComPtr<ID3D12DescriptorHeap> uavHeap;
+    ComPtr<ID3D12DescriptorHeap> samplerHeap;
+    hr = hvk::boiler::CreateDescriptorHeaps(device, kFramebuffers, rtvHeap, uavHeap, samplerHeap);
+
+    ComPtr<ID3D12Resource> renderTargets[kFramebuffers];
+    hr = hvk::boiler::CreateRenderTargetView(device, swapchain, rtvHeap, kFramebuffers, renderTargets);
+
+    // create display texture
+    ComPtr<ID3D12Resource> displayTexture;
+    D3D12_HEAP_PROPERTIES texHeap = {};
+    texHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    texHeap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    texHeap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    texHeap.CreationNodeMask = 1;
+    texHeap.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC texDesc = {};
+    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.Width = imageWidth;
+    texDesc.Height = imageHeight;
+    texDesc.MipLevels = 1;
+    texDesc.DepthOrArraySize = 1;
+    texDesc.SampleDesc.Count = 1;
+    texDesc.SampleDesc.Quality = 0;
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hr = device->CreateCommittedResource(
+        &texHeap, 
+        D3D12_HEAP_FLAG_NONE, 
+        &texDesc, 
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, 
+        nullptr, 
+        IID_PPV_ARGS(&displayTexture));
+
+    std::vector<uint8_t> colorBuffer;
+    colorBuffer.resize(imageWidth* imageHeight * 4);
+
+    // create vertex buffer
+    ComPtr<ID3D12Resource> vertexBuffer;
+    auto vertexBufferview = hvk::boiler::CreateVertexBuffer(
+        device, 
+        reinterpret_cast<const uint8_t*>(kVertices), 
+        sizeof(kVertices), 
+        sizeof(Vertex), vertexBuffer);
 
     // Camera setup
     const hvk::Camera camera(
@@ -478,53 +631,186 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     //         hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
     // registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
+	// Create thread pool
+	hvk::ThreadPool pool(kNumThreads);
+
+	// Render
+	for (int i = imageHeight - 1; i >= 0; --i)
+	{
+		for (int j = 0; j < imageWidth; ++j)
+		{
+			pool.QueueWork([&, i, j]()
+		   {
+			   Color pixelColor(0.f, 0.f, 0.f);
+			   auto result = std::make_optional(RayTestResult{});
+			   for (size_t s = 0; s < kNumSamples; ++s)
+			   {
+				   auto u = static_cast<double>(j + hvk::math::getRandom<double, 0.0, 1.0>()) /
+							(imageWidth - 1);
+				   auto v = static_cast<double>(i + hvk::math::getRandom<double, 0.0, 1.0>()) /
+							(imageHeight - 1);
+
+				   hvk::Ray skyRay = camera.GetRay(u, v);
+				   pixelColor += rayColor(skyRay, registry, kMaxRayDepth, result);
+			   }
+			   const size_t writeIndex = ((imageHeight - 1) - i) * imageWidth + j;
+			   // const hvk::Color normalizedHit = 0.5f * hvk::Color(
+			   //         result->hit.X() / viewportWidth + 1,
+			   //         result->hit.Y() / viewportHeight + 1,
+			   //         -result->hit.Z() / 1.5f);
+			   writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
+			   depthBuffer[writeIndex] = (result->depth / kNumSamples);
+			   normalBuffer[writeIndex] = (result->normal / kNumSamples);
+			   reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
+			   // hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
+		   });
+		}
+	}
+
+	const auto descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    uint8_t frameIndex = 0;
+    bool running = true;
+    MSG msg;
+    while (running)
     {
-        // Create thread pool
-        hvk::ThreadPool pool(kNumThreads);
+		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT || msg.message == WM_CLOSE || msg.message == WM_DESTROY)
+			{
+				running = false;
+			}
+			if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+			{
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
+		}
 
-        // Render
-        for (int i = imageHeight - 1; i >= 0; --i)
+        auto framebuffer = renderTargets[frameIndex];
+
+        hr = commandAllocator->Reset();
+        hr = commandList->Reset(commandAllocator.Get(), nullptr);
+
+        // prepare texture from current color contents
+        for (size_t i = 0; i < imageWidth * imageHeight; ++i)
         {
-            for (int j = 0; j < imageWidth; ++j)
-            {
-                pool.QueueWork([&, i, j]()
-               {
-                   Color pixelColor(0.f, 0.f, 0.f);
-                   auto result = std::make_optional(RayTestResult{});
-                   for (size_t s = 0; s < kNumSamples; ++s)
-                   {
-                       auto u = static_cast<double>(j + hvk::math::getRandom<double, 0.0, 1.0>()) /
-                                (imageWidth - 1);
-                       auto v = static_cast<double>(i + hvk::math::getRandom<double, 0.0, 1.0>()) /
-                                (imageHeight - 1);
+            const auto& c = writeOutBuffer[i];
 
-                       hvk::Ray skyRay = camera.GetRay(u, v);
-                       pixelColor += rayColor(skyRay, registry, kMaxRayDepth, result);
-                   }
-                   const size_t writeIndex = ((imageHeight - 1) - i) * imageWidth + j;
-                   // const hvk::Color normalizedHit = 0.5f * hvk::Color(
-                   //         result->hit.X() / viewportWidth + 1,
-                   //         result->hit.Y() / viewportHeight + 1,
-                   //         -result->hit.Z() / 1.5f);
-                   writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
-                   depthBuffer[writeIndex] = (result->depth / kNumSamples);
-                   normalBuffer[writeIndex] = (result->normal / kNumSamples);
-                   reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
-                   // hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
-               });
-            }
+		    auto ir = static_cast<int>(255.999 * c.X());
+		    auto ig = static_cast<int>(255.999 * c.Y());
+		    auto ib = static_cast<int>(255.999 * c.Z());
+            auto alpha = 255;
+
+            const auto writeAt = i * 4;
+            colorBuffer[writeAt] = ir;
+            colorBuffer[writeAt + 1] = ig;
+            colorBuffer[writeAt + 2] = ib;
+            colorBuffer[writeAt + 3] = alpha;
         }
+        hr = hvk::boiler::RGBAToTexture(device, commandList, commandQueue, colorBuffer, imageWidth, imageHeight, displayTexture);
+        assert(SUCCEEDED(hr));
+
+        hr = commandList->Reset(commandAllocator.Get(), pipelineState.Get());
+
+        // set viewport / scissor
+        D3D12_VIEWPORT viewport = {};
+        viewport.Width = static_cast<float>(windowWidth);
+        viewport.Height = static_cast<float>(windowHeight);
+        viewport.TopLeftX = 0.f;
+        viewport.TopLeftY = 0.f;
+        viewport.MinDepth = 0.f;
+        viewport.MaxDepth = 1.f;
+
+        D3D12_RECT scissorRect = {};
+        scissorRect.left = 0;
+        scissorRect.right = windowWidth;
+        scissorRect.top = 0;
+        scissorRect.bottom = windowHeight;
+
+        commandList->RSSetViewports(1, &viewport);
+        commandList->RSSetScissorRects(1, &scissorRect);
+
+        // set root signature
+        commandList->SetGraphicsRootSignature(rootSig.Get());
+
+        // create resource views
+        auto displayDesc = displayTexture->GetDesc();
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = displayDesc.Format;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MipLevels = displayDesc.MipLevels;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        auto uavHandle = uavHeap->GetCPUDescriptorHandleForHeapStart();
+        device->CreateShaderResourceView(displayTexture.Get(), &srvDesc, uavHandle);
+
+        // set descriptor heaps
+        ID3D12DescriptorHeap* heaps[] = { uavHeap.Get(), samplerHeap.Get() };
+        commandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
+        // set root descriptor table
+        commandList->SetGraphicsRootDescriptorTable(0, uavHeap->GetGPUDescriptorHandleForHeapStart());
+
+        // transition present -> render target
+        D3D12_RESOURCE_BARRIER backBuffer = {};
+        backBuffer.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        //backBuffer.Transition.pResource = framebuffer.Get();
+        backBuffer.Transition.pResource = renderTargets[frameIndex].Get();
+        backBuffer.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        backBuffer.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        backBuffer.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        commandList->ResourceBarrier(1, &backBuffer);
+
+        // set render target
+        auto rtvHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvDesc = {};
+        rtvDesc.ptr = rtvHandle.ptr + (descriptorSize * frameIndex);
+        commandList->OMSetRenderTargets(1, &rtvDesc, false, nullptr);
+        commandList->ClearRenderTargetView(rtvDesc, kClearColor, 0, nullptr);
+
+        // set topology
+        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        // set vertex buffer
+        commandList->IASetVertexBuffers(0, 1, &vertexBufferview);
+
+        // draw
+        commandList->DrawInstanced(kNumVertices, 1, 0, 0);
+
+        // transition render target -> present
+        D3D12_RESOURCE_BARRIER present = {};
+        present.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        //present.Transition.pResource = framebuffer.Get();
+        present.Transition.pResource = renderTargets[frameIndex].Get();
+        present.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        present.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        present.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        commandList->ResourceBarrier(1, &present);
+
+        // execute command list
+        hr = commandList->Close();
+        ID3D12CommandList* commandLists[] = { commandList.Get() };
+        commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+        // present
+        hr = swapchain->Present(1, 0);
+
+        hvk::boiler::WaitForGraphics(device, commandQueue);
+
+        // get next swapchain index
+        frameIndex = swapchain->GetCurrentBackBufferIndex();
     }
 
-    writeBuffers(
-        writeOutBuffer,
-        imageWidth,
-        imageHeight,
-        std::make_optional(depthBuffer),
-        std::make_optional(normalBuffer),
-        std::make_optional(reflectBuffer),
-        std::nullopt);
-        // std::make_optional(hitBuffer));
+    //writeBuffers(
+    //    writeOutBuffer,
+    //    imageWidth,
+    //    imageHeight,
+    //    std::make_optional(depthBuffer),
+    //    std::make_optional(normalBuffer),
+    //    std::make_optional(reflectBuffer),
+    //    std::nullopt);
+    //    // std::make_optional(hitBuffer));
 
     return 0;
 }

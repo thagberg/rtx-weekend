@@ -15,6 +15,12 @@ namespace hvk
 {
 	namespace boiler
 	{
+		template <typename T, typename U>
+		T Align(T offset, U alignment)
+		{
+			return (offset + (alignment - 1)) & ~(alignment - 1);
+		}
+
 		void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 
 		HRESULT CreateFactory(ComPtr<IDXGIFactory4>& factoryOut);
@@ -98,6 +104,15 @@ namespace hvk
 			D3D12_RESOURCE_STATES resourceStates,
 			D3D12_HEAP_TYPE heaptype,
 			ComPtr<ID3D12Resource>& outResource);
+
+		HRESULT RGBAToTexture(
+			ComPtr<ID3D12Device> device,
+			ComPtr<ID3D12GraphicsCommandList> commandList,
+			ComPtr<ID3D12CommandQueue> commandQueue,
+			std::vector<uint8_t> rgbaData,
+			uint32_t width,
+			uint32_t height,
+			ComPtr<ID3D12Resource> outTexture);
 
 #if !defined(D3D12_BOILER)
 #define D3D12_BOILER
@@ -450,30 +465,6 @@ namespace hvk
 			return vbView;
 		}
 
-		HRESULT WaitForGraphics(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue)
-		{
-			HRESULT hr = S_OK;
-			ComPtr<ID3D12Fence> fence;
-			hr = CreateFence(device, fence);
-			uint64_t fenceValue = 1;
-			hr = commandQueue->Signal(fence.Get(), fenceValue);
-			assert(SUCCEEDED(hr));
-
-			if (SUCCEEDED(hr))
-			{
-				auto fenceEvent = CreateEvent(nullptr, false, false, nullptr);
-				auto completedVal = fence->GetCompletedValue();
-				if (completedVal != fenceValue)
-				{
-					hr = fence->SetEventOnCompletion(fenceValue, fenceEvent);
-					assert(SUCCEEDED(hr));
-					WaitForSingleObject(fenceEvent, INFINITE);
-				}
-			}
-
-			return hr;
-		}
-
 		D3D12_HEAP_PROPERTIES HeapPropertiesDefault()
 		{
 			D3D12_HEAP_PROPERTIES props = {};
@@ -524,6 +515,120 @@ namespace hvk
 				resourceStates,
 				nullptr,
 				IID_PPV_ARGS(&outResource));
+
+			return hr;
+		}
+
+		HRESULT WaitForGraphics(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue> commandQueue)
+		{
+			HRESULT hr = S_OK;
+			ComPtr<ID3D12Fence> fence;
+			hr = CreateFence(device, fence);
+			uint64_t fenceValue = 1;
+			hr = commandQueue->Signal(fence.Get(), fenceValue);
+			assert(SUCCEEDED(hr));
+
+			if (SUCCEEDED(hr))
+			{
+				auto fenceEvent = CreateEvent(nullptr, false, false, nullptr);
+				auto completedVal = fence->GetCompletedValue();
+				if (completedVal != fenceValue)
+				{
+					hr = fence->SetEventOnCompletion(fenceValue, fenceEvent);
+					assert(SUCCEEDED(hr));
+					WaitForSingleObject(fenceEvent, INFINITE);
+				}
+			}
+
+			return hr;
+		}
+
+		HRESULT RGBAToTexture(
+			ComPtr<ID3D12Device> device,
+			ComPtr<ID3D12GraphicsCommandList> commandList,
+			ComPtr<ID3D12CommandQueue> commandQueue,
+			std::vector<uint8_t> rgbaData,
+			uint32_t width,
+			uint32_t height,
+			ComPtr<ID3D12Resource> outTexture)
+		{
+			HRESULT hr = S_OK;
+
+			ComPtr<ID3D12Resource> tempBuffer;
+
+			D3D12_HEAP_PROPERTIES heapProps = {};
+			heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+			heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProps.CreationNodeMask = 1;
+			heapProps.VisibleNodeMask = 1;
+
+			const auto paddedWidth = Align(width * 4, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT) * height - (D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - (width * 4));
+			D3D12_RESOURCE_DESC bufferDesc = {};
+			bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			bufferDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+			bufferDesc.Width = paddedWidth;
+			bufferDesc.Height = 1;
+			bufferDesc.DepthOrArraySize = 1;
+			bufferDesc.MipLevels = 1;
+			bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+			bufferDesc.SampleDesc.Count = 1;
+			bufferDesc.SampleDesc.Quality = 0;
+			bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+			hr = device->CreateCommittedResource(
+				&heapProps,
+				D3D12_HEAP_FLAG_NONE,
+				&bufferDesc,
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&tempBuffer));
+			assert(SUCCEEDED(hr));
+
+			uint8_t* bufferData;
+			tempBuffer->Map(0, nullptr, reinterpret_cast<void**>(&bufferData));
+			uint8_t* writeAt = bufferData;
+			for (size_t i = 0; i < height; ++i)
+			{
+				size_t sourceOffset = (i * width * 4);
+				memcpy(writeAt, rgbaData.data() + sourceOffset, width * 4);
+				writeAt = reinterpret_cast<uint8_t*>(Align(reinterpret_cast<size_t>(writeAt) + 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT));
+			}
+			tempBuffer->Unmap(0, nullptr);
+
+			D3D12_TEXTURE_COPY_LOCATION copySource = {};
+			copySource.pResource = tempBuffer.Get();
+			copySource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+			size_t requiredSize = 0;
+			device->GetCopyableFootprints(&outTexture->GetDesc(), 0, 1, 0, &copySource.PlacedFootprint, nullptr, nullptr, &requiredSize);
+
+			D3D12_RESOURCE_BARRIER copyBarrier = {};
+			copyBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			copyBarrier.Transition.pResource = outTexture.Get();
+			copyBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+			copyBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+			commandList->ResourceBarrier(1, &copyBarrier);
+
+			D3D12_TEXTURE_COPY_LOCATION copyDest = {};
+			copyDest.pResource = outTexture.Get();
+			copyDest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+			copyDest.SubresourceIndex = 0;
+
+			commandList->CopyTextureRegion(&copyDest, 0, 0, 0, &copySource, nullptr);
+
+			D3D12_RESOURCE_BARRIER srvBarrier = {};
+			srvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			srvBarrier.Transition.pResource = outTexture.Get();
+			srvBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+			srvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+			commandList->ResourceBarrier(1, &srvBarrier);
+
+			commandList->Close();
+			ID3D12CommandList* commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+			hr = WaitForGraphics(device, commandQueue);
 
 			return hr;
 		}
