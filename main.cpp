@@ -34,8 +34,8 @@ using Color = hvk::Vector;
 const hvk::Vector kSkyColor1 = hvk::Vector(1.f, 1.f, 1.f);
 const hvk::Vector kSkyColor2 = hvk::Vector(0.5f, 0.7f, 1.f);
 
-const uint16_t kNumSamples = 100;
-const uint16_t kMaxRayDepth = 50;
+const uint16_t kNumSamples = 10;
+const uint16_t kMaxRayDepth = 5;
 
 const double kMinDepth = 0.01f;
 const double kMaxDepth = 5.f;
@@ -659,9 +659,9 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 			   //         result->hit.Y() / viewportHeight + 1,
 			   //         -result->hit.Z() / 1.5f);
 			   writeOutBuffer[writeIndex] = (pixelColor / kNumSamples);
-			   depthBuffer[writeIndex] = (result->depth / kNumSamples);
-			   normalBuffer[writeIndex] = (result->normal / kNumSamples);
-			   reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
+			   //depthBuffer[writeIndex] = (result->depth / kNumSamples);
+			   //normalBuffer[writeIndex] = (result->normal / kNumSamples);
+			   //reflectBuffer[writeIndex] = (result->reflect / kNumSamples);
 			   // hitBuffer[writeIndex] = (normalizedHit / kNumSamples);
 		   });
 		}

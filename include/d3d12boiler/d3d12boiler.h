@@ -589,11 +589,12 @@ namespace hvk
 			uint8_t* bufferData;
 			tempBuffer->Map(0, nullptr, reinterpret_cast<void**>(&bufferData));
 			uint8_t* writeAt = bufferData;
+			const size_t writeSize = width * 4;
 			for (size_t i = 0; i < height; ++i)
 			{
 				size_t sourceOffset = (i * width * 4);
-				memcpy(writeAt, rgbaData.data() + sourceOffset, width * 4);
-				writeAt = reinterpret_cast<uint8_t*>(Align(reinterpret_cast<size_t>(writeAt) + 1, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT));
+				memcpy(writeAt, rgbaData.data() + sourceOffset, writeSize);
+				writeAt = reinterpret_cast<uint8_t*>(Align(reinterpret_cast<size_t>(writeAt) + writeSize, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT));
 			}
 			tempBuffer->Unmap(0, nullptr);
 
