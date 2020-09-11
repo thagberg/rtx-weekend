@@ -23,9 +23,14 @@ namespace hvk
 
 		void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter);
 
+		bool SupportsRaytracing(ComPtr<ID3D12Device> device);
+
 		HRESULT CreateFactory(ComPtr<IDXGIFactory4>& factoryOut);
 
-		HRESULT CreateDevice(ComPtr<IDXGIFactory4> factory, ComPtr<IDXGIAdapter1> hardwareAdapter, ComPtr<ID3D12Device>& deviceOut);
+		//HRESULT CreateDevice(ComPtr<IDXGIFactory4> factory, ComPtr<IDXGIAdapter1> hardwareAdapter, ComPtr<ID3D12Device>& deviceOut);
+
+		template <typename DeviceClass>
+		HRESULT CreateDevice(ComPtr<IDXGIFactory4> factory, ComPtr<IDXGIAdapter1> hardwareAdapter, ComPtr<DeviceClass>& deviceOut);
 
 		HRESULT CreateCommandQueue(ComPtr<ID3D12Device> device, ComPtr<ID3D12CommandQueue>& cqOut);
 
@@ -144,6 +149,13 @@ namespace hvk
 			*ppAdapter = adapter.Detach();
 		}
 
+		bool SupportsRaytracing(ComPtr<ID3D12Device> device)
+		{
+			D3D12_FEATURE_DATA_D3D12_OPTIONS5 options = {};
+			device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options, sizeof(options));
+			return options.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
+		}
+
 		HRESULT CreateFactory(ComPtr<IDXGIFactory4>& factoryOut)
 		{
 			auto hr = S_OK;
@@ -153,7 +165,8 @@ namespace hvk
 			return hr;
 		}
 
-		HRESULT CreateDevice(ComPtr<IDXGIFactory4> factory, ComPtr<IDXGIAdapter1> hardwareAdapter, ComPtr<ID3D12Device>& deviceOut)
+		template <typename DeviceClass>
+		HRESULT CreateDevice(ComPtr<IDXGIFactory4> factory, ComPtr<IDXGIAdapter1> hardwareAdapter, ComPtr<DeviceClass>& deviceOut)
 		{
 #if defined(_DEBUG)
 			// Enable debug layers
@@ -632,6 +645,14 @@ namespace hvk
 			hr = WaitForGraphics(device, commandQueue);
 
 			return hr;
+		}
+
+		HRESULT CreateBuffer(ComPtr<ID3D12Device> device, const D3D12_HEAP_PROPERTIES& heapProps, uint64_t alignment, ComPtr<ID3D12Resource>& outBuffer)
+		{
+			D3D12_RESOURCE_DESC bufferDesc = {};
+			bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			bufferDesc.Alignment = alignment;
+			D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT;
 		}
 #endif // D3D12_BOILER
 	}

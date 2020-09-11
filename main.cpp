@@ -22,6 +22,7 @@ using namespace DirectX;
 #include "Box.h"
 #include "ThreadPool.h"
 #include "Camera.h"
+#include "aabb.h"
 
 struct Vertex
 {
@@ -397,7 +398,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     ComPtr<IDXGIFactory4> factory;
     ComPtr<IDXGIAdapter1> hardwareAdapter;
-    ComPtr<ID3D12Device> device;
+    ComPtr<ID3D12Device5> device;
     ComPtr<ID3D12CommandAllocator> commandAllocator;
     ComPtr<ID3D12CommandQueue> commandQueue;
     ComPtr<IDXGISwapChain3> swapchain;
@@ -412,6 +413,8 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     hr = hvk::boiler::CreateCommandAllocator(device, commandAllocator);
 	hr = hvk::boiler::CreateCommandQueue(device, commandQueue);
 	hr = hvk::boiler::CreateSwapchain(commandQueue, factory, hwnd, 2, windowWidth, windowHeight, swapchain);
+
+    assert(hvk::boiler::SupportsRaytracing(device));
 
     entt::registry registry;
 
@@ -550,6 +553,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     auto sphereEntity = registry.create();
     registry.emplace<hvk::Sphere>(sphereEntity, hvk::Vector(0.0f, 0.0f, -1.f), 0.5f);
     registry.emplace<hvk::Material>(sphereEntity, hvk::MaterialType::Diffuse, hvk::Color(1.f, 0.f, 0.f), -1.f);
+    registry.assign<D3D12_RAYTRACING_AABB>(sphereEntity, hvk::aabb::getAABB(registry.get<hvk::Sphere>(sphereEntity)));
 
 //    auto groundEntity = registry.create();
 //    registry.emplace<hvk::Sphere>(groundEntity, hvk::Vector(0, -100.5f, -1.f), 100.f);
