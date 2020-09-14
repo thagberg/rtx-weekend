@@ -652,7 +652,10 @@ namespace hvk
 			D3D12_RESOURCE_DESC bufferDesc = {};
 			bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			bufferDesc.Alignment = alignment;
+
+
 			D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT;
+			D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE addressAndStride;
 		}
 #endif // D3D12_BOILER
 	}
