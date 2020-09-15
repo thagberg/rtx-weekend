@@ -635,6 +635,46 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     //         hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
     // registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
+    // Create DXR Structures
+    ComPtr<ID3D12Resource> aabbBuffer;
+    {
+        ComPtr<ID3D12Resource> aabbCopyBuffer;
+        const size_t unalignedSize = 20 * sizeof(D3D12_RAYTRACING_AABB);
+        const size_t alignedSize = hvk::boiler::Align(unalignedSize, D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT);
+        hr = hvk::boiler::CreateBuffer(
+            device,
+            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN),
+            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+            alignedSize,
+            D3D12_RESOURCE_FLAG_NONE,
+            aabbCopyBuffer);
+        assert(SUCCEEDED(hr));
+
+        hr = hvk::boiler::CreateBuffer(
+            device,
+            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN),
+            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+            alignedSize,
+            D3D12_RESOURCE_FLAG_NONE,
+            aabbBuffer);
+
+        uint8_t* bufferData;
+        aabbCopyBuffer->Map(0, nullptr, reinterpret_cast<void**>(&bufferData));
+
+        uint8_t* writeAt = bufferData;
+        const auto aabbView = registry.view<hvk::Sphere, D3D12_RAYTRACING_AABB>();
+        aabbView.each([writeAt](auto entity, const auto& sphere, const auto& aabb) mutable {
+            memcpy(writeAt, &aabb, sizeof(D3D12_RAYTRACING_AABB));
+            writeAt += hvk::boiler::Align(sizeof(D3D12_RAYTRACING_AABB), D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT);
+        });
+
+        aabbCopyBuffer->Unmap(0, nullptr);
+
+        commandList->Reset(commandAllocator.Get(), nullptr);
+        hr = hvk::boiler::CopyBufferGPUImmediate(device, commandList, commandQueue, aabbCopyBuffer, aabbBuffer, D3D12_RESOURCE_STATE_GENERIC_READ);
+        assert(SUCCEEDED(hr));
+    }
+
 	// Create thread pool
 	hvk::ThreadPool pool(kNumThreads);
 

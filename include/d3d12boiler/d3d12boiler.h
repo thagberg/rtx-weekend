@@ -119,6 +119,24 @@ namespace hvk
 			uint32_t height,
 			ComPtr<ID3D12Resource> outTexture);
 
+		HRESULT CreateBuffer(
+			ComPtr<ID3D12Device> device,
+			const D3D12_HEAP_PROPERTIES& heapProps,
+			uint64_t alignment,
+			size_t width,
+			D3D12_RESOURCE_FLAGS flags,
+			ComPtr<ID3D12Resource>& outBuffer);
+
+		D3D12_HEAP_PROPERTIES CreateHeapProperties(D3D12_HEAP_TYPE type, D3D12_CPU_PAGE_PROPERTY cpuPageProperty, D3D12_MEMORY_POOL memoryPoolPreferences);
+
+		HRESULT CopyBufferGPUImmediate(
+			ComPtr<ID3D12Device> device,
+			ComPtr<ID3D12GraphicsCommandList> commandList,
+			ComPtr<ID3D12CommandQueue> commandQueue,
+			ComPtr<ID3D12Resource> sourceBuffer,
+			ComPtr<ID3D12Resource> destBuffer,
+			D3D12_RESOURCE_STATES destState);
+
 #if !defined(D3D12_BOILER)
 #define D3D12_BOILER
 
@@ -647,15 +665,90 @@ namespace hvk
 			return hr;
 		}
 
-		HRESULT CreateBuffer(ComPtr<ID3D12Device> device, const D3D12_HEAP_PROPERTIES& heapProps, uint64_t alignment, ComPtr<ID3D12Resource>& outBuffer)
+		HRESULT CopyBufferGPUImmediate(
+			ComPtr<ID3D12Device> device,
+			ComPtr<ID3D12GraphicsCommandList> commandList,
+			ComPtr<ID3D12CommandQueue> commandQueue,
+			ComPtr<ID3D12Resource> sourceBuffer,
+			ComPtr<ID3D12Resource> destBuffer,
+			D3D12_RESOURCE_STATES destState)
 		{
+			auto hr = S_OK;
+
+			//D3D12_RESOURCE_BARRIER sourceCopyBarrier = {};
+			//sourceCopyBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			//sourceCopyBarrier.Transition.pResource = sourceBuffer.Get();
+			//sourceCopyBarrier.Transition.StateBefore = sourceState;
+			//sourceCopyBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+			D3D12_RESOURCE_BARRIER destCopyBarrier = {};
+			destCopyBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			destCopyBarrier.Transition.pResource = destBuffer.Get();
+			destCopyBarrier.Transition.StateBefore = destState;
+			destCopyBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+
+			const D3D12_RESOURCE_BARRIER preBarriers[] = { destCopyBarrier };
+			commandList->ResourceBarrier(_countof(preBarriers), preBarriers);
+
+			commandList->CopyResource(destBuffer.Get(), sourceBuffer.Get());
+
+			//sourceCopyBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+			//sourceCopyBarrier.Transition.StateAfter = sourceState;
+			destCopyBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+			destCopyBarrier.Transition.StateAfter = destState;
+
+			const D3D12_RESOURCE_BARRIER postBarriers[] = { destCopyBarrier };
+			commandList->ResourceBarrier(_countof(postBarriers), postBarriers);
+
+			commandList->Close();
+			ID3D12CommandList* commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+			hr = WaitForGraphics(device, commandQueue);
+
+			return hr;
+		}
+
+		HRESULT CreateBuffer(ComPtr<ID3D12Device> device, const D3D12_HEAP_PROPERTIES& heapProps, uint64_t alignment, size_t width, D3D12_RESOURCE_FLAGS flags, ComPtr<ID3D12Resource>& outBuffer)
+		{
+			auto hr = S_OK;
+
 			D3D12_RESOURCE_DESC bufferDesc = {};
 			bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			bufferDesc.Alignment = alignment;
+			bufferDesc.Width = width;
+			bufferDesc.Height = 1;
+			bufferDesc.DepthOrArraySize = 1;
+			bufferDesc.MipLevels = 1;
+			bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+			bufferDesc.SampleDesc.Count = 1;
+			bufferDesc.SampleDesc.Quality = 0;
+			bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			bufferDesc.Flags = flags;
 
+			hr = device->CreateCommittedResource(
+				&heapProps, 
+				D3D12_HEAP_FLAG_NONE, 
+				&bufferDesc, 
+				D3D12_RESOURCE_STATE_GENERIC_READ, 
+				nullptr, 
+				IID_PPV_ARGS(&outBuffer));
 
-			D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT;
-			D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE addressAndStride;
+			//D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT;
+			//D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE addressAndStride;
+
+			return hr;
+		}
+
+		D3D12_HEAP_PROPERTIES CreateHeapProperties(D3D12_HEAP_TYPE type, D3D12_CPU_PAGE_PROPERTY cpuPageProperty, D3D12_MEMORY_POOL memoryPoolPreference)
+		{
+			D3D12_HEAP_PROPERTIES heapProps = {};
+			heapProps.Type = type;
+			heapProps.CPUPageProperty = cpuPageProperty;
+			heapProps.MemoryPoolPreference = memoryPoolPreference;
+			heapProps.CreationNodeMask = 1;
+			heapProps.VisibleNodeMask = 1;
+
+			return heapProps;
 		}
 #endif // D3D12_BOILER
 	}
