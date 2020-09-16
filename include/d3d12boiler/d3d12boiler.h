@@ -82,11 +82,12 @@ namespace hvk
 			size_t computeShaderSize,
 			ComPtr<ID3D12PipelineState>& psOut);
 
+		template <typename DeviceClass, typename GraphicsCommandListClass>
 		HRESULT CreateCommandList(
-			ComPtr<ID3D12Device> device,
+			ComPtr<DeviceClass> device,
 			ComPtr<ID3D12CommandAllocator> allocator,
 			ComPtr<ID3D12PipelineState> pipeline,
-			ComPtr<ID3D12GraphicsCommandList>& clOut);
+			ComPtr<GraphicsCommandListClass>& clOut);
 
 		HRESULT CreateFence(ComPtr<ID3D12Device> device, ComPtr<ID3D12Fence>& fOut);
 
@@ -125,7 +126,8 @@ namespace hvk
 			uint64_t alignment,
 			size_t width,
 			D3D12_RESOURCE_FLAGS flags,
-			ComPtr<ID3D12Resource>& outBuffer);
+			ComPtr<ID3D12Resource>& outBuffer,
+			D3D12_RESOURCE_STATES initialState=D3D12_RESOURCE_STATE_GENERIC_READ);
 
 		D3D12_HEAP_PROPERTIES CreateHeapProperties(D3D12_HEAP_TYPE type, D3D12_CPU_PAGE_PROPERTY cpuPageProperty, D3D12_MEMORY_POOL memoryPoolPreferences);
 
@@ -425,11 +427,12 @@ namespace hvk
 			return hr;
 		}
 
+		template <typename DeviceClass, typename GraphicsCommandListClass>
 		HRESULT CreateCommandList(
-			ComPtr<ID3D12Device> device,
+			ComPtr<DeviceClass> device,
 			ComPtr<ID3D12CommandAllocator> allocator,
 			ComPtr<ID3D12PipelineState> pipeline,
-			ComPtr<ID3D12GraphicsCommandList>& clOut)
+			ComPtr<GraphicsCommandListClass>& clOut)
 		{
 			auto hr = S_OK;
 
@@ -708,7 +711,14 @@ namespace hvk
 			return hr;
 		}
 
-		HRESULT CreateBuffer(ComPtr<ID3D12Device> device, const D3D12_HEAP_PROPERTIES& heapProps, uint64_t alignment, size_t width, D3D12_RESOURCE_FLAGS flags, ComPtr<ID3D12Resource>& outBuffer)
+		HRESULT CreateBuffer(
+			ComPtr<ID3D12Device> device, 
+			const D3D12_HEAP_PROPERTIES& heapProps, 
+			uint64_t alignment, 
+			size_t width, 
+			D3D12_RESOURCE_FLAGS flags, 
+			ComPtr<ID3D12Resource>& outBuffer,
+			D3D12_RESOURCE_STATES initialState)
 		{
 			auto hr = S_OK;
 
@@ -729,12 +739,9 @@ namespace hvk
 				&heapProps, 
 				D3D12_HEAP_FLAG_NONE, 
 				&bufferDesc, 
-				D3D12_RESOURCE_STATE_GENERIC_READ, 
+				initialState, 
 				nullptr, 
 				IID_PPV_ARGS(&outBuffer));
-
-			//D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT;
-			//D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE addressAndStride;
 
 			return hr;
 		}
