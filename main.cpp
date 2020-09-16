@@ -404,7 +404,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ComPtr<IDXGISwapChain3> swapchain;
     ComPtr<ID3D12RootSignature> rootSig;
     ComPtr<ID3D12PipelineState> pipelineState;
-    ComPtr<ID3D12GraphicsCommandList> commandList;
+    ComPtr<ID3D12GraphicsCommandList5> commandList;
 
 	HRESULT hr = S_OK;
 	hr = hvk::boiler::CreateFactory(factory);
@@ -636,6 +636,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     // registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
     // Create DXR Structures
+    ComPtr<ID3D12Resource> blas;
     ComPtr<ID3D12Resource> aabbBuffer;
     {
         ComPtr<ID3D12Resource> aabbCopyBuffer;
@@ -688,66 +689,98 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     blasDesc.AABBs = aabbsDesc;
     blasDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 
-    D3D12_RAYTRACING_GEOMETRY_DESC* geometryDescs[] = { &blasDesc };
+    D3D12_RAYTRACING_GEOMETRY_DESC geometryDescs[] = { blasDesc };
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
     blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     blasInputs.NumDescs = 1;
     blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-    blasInputs.ppGeometryDescs = geometryDescs;
+    blasInputs.pGeometryDescs = geometryDescs;
     blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasBuildDesc = {};
 
-	//AccelerationStructureBuffers D3D12RaytracingProceduralGeometry::BuildBottomLevelAS(const vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometryDescs, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags)
-	//{
-	//	auto device = m_deviceResources->GetD3DDevice();
-	//	auto commandList = m_deviceResources->GetCommandList();
-	//	ComPtr<ID3D12Resource> scratch;
-	//	ComPtr<ID3D12Resource> bottomLevelAS;
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO aabbPrebuild = {};
+    device->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &aabbPrebuild);
+    assert(aabbPrebuild.ResultDataMaxSizeInBytes > 0);
 
-	//	// Get the size requirements for the scratch and AS buffers.
-	//	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
-	//	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS& bottomLevelInputs = bottomLevelBuildDesc.Inputs;
-	//	bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-	//	bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-	//	bottomLevelInputs.Flags = buildFlags;
-	//	bottomLevelInputs.NumDescs = static_cast<UINT>(geometryDescs.size());
-	//	bottomLevelInputs.pGeometryDescs = geometryDescs.data();
+    ComPtr<ID3D12Resource> aabbScratchBuffer;
+    hvk::boiler::CreateBuffer(
+        device, 
+        hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+        D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+        aabbPrebuild.ScratchDataSizeInBytes, 
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        aabbScratchBuffer,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-	//	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO bottomLevelPrebuildInfo = {};
-	//	m_dxrDevice->GetRaytracingAccelerationStructurePrebuildInfo(&bottomLevelInputs, &bottomLevelPrebuildInfo);
-	//	ThrowIfFalse(bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes > 0);
+    hvk::boiler::CreateBuffer(
+        device, 
+        hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+        D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+        aabbPrebuild.ResultDataMaxSizeInBytes, 
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+        blas,
+        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
 
-	//	// Create a scratch buffer.
-	//	AllocateUAVBuffer(device, bottomLevelPrebuildInfo.ScratchDataSizeInBytes, &scratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"ScratchResource");
+    blasBuildDesc.ScratchAccelerationStructureData = aabbScratchBuffer->GetGPUVirtualAddress();
+    blasBuildDesc.DestAccelerationStructureData = blas->GetGPUVirtualAddress();
+    blasBuildDesc.Inputs = blasInputs;
 
-	//	// Allocate resources for acceleration structures.
-	//	// Acceleration structures can only be placed in resources that are created in the default heap (or custom heap equivalent). 
-	//	// Default heap is OK since the application doesn?t need CPU read/write access to them. 
-	//	// The resources that will contain acceleration structures must be created in the state D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, 
-	//	// and must have resource flag D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS. The ALLOW_UNORDERED_ACCESS requirement simply acknowledges both: 
-	//	//  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
-	//	//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
-	//	{
-	//		D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-	//		AllocateUAVBuffer(device, bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes, &bottomLevelAS, initialResourceState, L"BottomLevelAccelerationStructure");
-	//	}
+    commandList->Reset(commandAllocator.Get(), nullptr);
+    commandList->BuildRaytracingAccelerationStructure(&blasBuildDesc, 0, nullptr);
 
-	//	// bottom-level AS desc.
-	//	{
-	//		bottomLevelBuildDesc.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
-	//		bottomLevelBuildDesc.DestAccelerationStructureData = bottomLevelAS->GetGPUVirtualAddress();
-	//	}
+    {
+        commandList->Close();
+        ID3D12CommandList* commandLists[] = { commandList.Get() };
+        commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+        hvk::boiler::WaitForGraphics(device, commandQueue);
+    }
 
-	//	// Build the acceleration structure.
-	//	m_dxrCommandList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
+    ComPtr<ID3D12Resource> topScratch;
+    ComPtr<ID3D12Resource> topAS;
+    {
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS& topInputs = topLevelBuildDesc.Inputs;
+        topInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+        topInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+        topInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+        topInputs.NumDescs = 1;
 
-	//	AccelerationStructureBuffers bottomLevelASBuffers;
-	//	bottomLevelASBuffers.accelerationStructure = bottomLevelAS;
-	//	bottomLevelASBuffers.scratch = scratch;
-	//	bottomLevelASBuffers.ResultDataMaxSizeInBytes = bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes;
-	//	return bottomLevelASBuffers;
-	//}
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO topPrebuild = {};
+        device->GetRaytracingAccelerationStructurePrebuildInfo(&topInputs, &topPrebuild);
+        assert(topPrebuild.ResultDataMaxSizeInBytes > 0);
+
+        hvk::boiler::CreateBuffer(
+            device, 
+            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+            topPrebuild.ScratchDataSizeInBytes, 
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            topScratch,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        assert(SUCCEEDED(hr));
+
+        hvk::boiler::CreateBuffer(
+            device, 
+            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+            topPrebuild.ResultDataMaxSizeInBytes, 
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            topAS,
+            D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+        assert(SUCCEEDED(hr));
+
+        ComPtr<ID3D12Resource> instanceDescResource;
+        {
+            D3D12_RAYTRACING_INSTANCE_DESC instanceDescs[1] = {};
+            D3D12_GPU_VIRTUAL_ADDRESS bottomLevelASAddresses[1] =
+            {
+                blas->GetGPUVirtualAddress()
+            };
+        }
+
+        D3D12_RAYTRACING_INSTANCE_DESC instanceDesc = {};
+    }
 
 	// Create thread pool
 	hvk::ThreadPool pool(kNumThreads);
