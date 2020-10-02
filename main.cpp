@@ -738,6 +738,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     ComPtr<ID3D12Resource> topScratch;
     ComPtr<ID3D12Resource> topAS;
+    ComPtr<ID3D12Resource> topInstance;
     {
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS& topInputs = topLevelBuildDesc.Inputs;
@@ -770,6 +771,26 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         assert(SUCCEEDED(hr));
 
+        hvk::boiler::CreateBuffer(
+            device,
+            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN),
+            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+            sizeof(D3D12_RAYTRACING_INSTANCE_DESC),
+            D3D12_RESOURCE_FLAG_NONE,
+            topInstance,
+            D3D12_RESOURCE_STATE_GENERIC_READ);
+        assert(SUCCEEDED(hr));
+
+        D3D12_RAYTRACING_INSTANCE_DESC* instance;
+        topInstance->Map(0, nullptr, reinterpret_cast<void**>(&instance));
+        instance->InstanceID = 0;
+        instance->InstanceContributionToHitGroupIndex = 0;
+        instance->Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+        XMMATRIX m = XMMatrixIdentity() * XMMatrixTranslation(0.f, 0.f, -1.f);
+        memcpy(instance->Transform, &m, sizeof(XMMATRIX));
+        instance->AccelerationStructure = blas->GetGPUVirtualAddress();
+        topInstance->Unmap(0, nullptr);
+
         ComPtr<ID3D12Resource> instanceDescResource;
         {
             D3D12_RAYTRACING_INSTANCE_DESC instanceDescs[1] = {};
@@ -780,6 +801,10 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         }
 
         D3D12_RAYTRACING_INSTANCE_DESC instanceDesc = {};
+
+        // let's try figuring out what's required for this call from the top
+        commandList->Reset(commandAllocator.Get(), nullptr);
+        commandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
     }
 
 	// Create thread pool
