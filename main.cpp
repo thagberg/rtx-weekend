@@ -791,20 +791,20 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         instance->AccelerationStructure = blas->GetGPUVirtualAddress();
         topInstance->Unmap(0, nullptr);
 
-        ComPtr<ID3D12Resource> instanceDescResource;
-        {
-            D3D12_RAYTRACING_INSTANCE_DESC instanceDescs[1] = {};
-            D3D12_GPU_VIRTUAL_ADDRESS bottomLevelASAddresses[1] =
-            {
-                blas->GetGPUVirtualAddress()
-            };
-        }
-
-        D3D12_RAYTRACING_INSTANCE_DESC instanceDesc = {};
+        topInputs.InstanceDescs = topInstance->GetGPUVirtualAddress();
+        topLevelBuildDesc.ScratchAccelerationStructureData = topScratch->GetGPUVirtualAddress();
+        topLevelBuildDesc.DestAccelerationStructureData = topAS->GetGPUVirtualAddress();
 
         // let's try figuring out what's required for this call from the top
         commandList->Reset(commandAllocator.Get(), nullptr);
         commandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+
+		{
+			commandList->Close();
+			ID3D12CommandList* commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+			hvk::boiler::WaitForGraphics(device, commandQueue);
+		}
     }
 
 	// Create thread pool
