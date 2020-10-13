@@ -732,6 +732,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             D3D12_RESOURCE_STATE_GENERIC_READ);
         assert(SUCCEEDED(hr));
 
+        // create TLAS instance
         D3D12_RAYTRACING_INSTANCE_DESC* instance;
         topInstance->Map(0, nullptr, reinterpret_cast<void**>(&instance));
         hvk::boiler::SetTLASInstanceValues(instance, 0, 0, XMMatrixIdentity()* XMMatrixTranslation(0.f, 0.f, -1.f), blas->GetGPUVirtualAddress());

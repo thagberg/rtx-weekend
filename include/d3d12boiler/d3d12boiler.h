@@ -864,6 +864,74 @@ namespace hvk
 			memcpy(instanceAddress->Transform, &transform, sizeof(XMMATRIX));
 		}
 
+		HRESULT CreateTLAS(
+			ComPtr<ID3D12Device5> device,
+			ComPtr<ID3D12GraphicsCommandList5> commandList,
+			std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instances,
+			ComPtr<ID3D12Resource>& tlasOut,
+			ComPtr<ID3D12Resource>& instancesOut,
+			ComPtr<ID3D12Resource>& scratchOut)
+		{
+			assert(instances.size() > 0);
+
+			HRESULT hr = S_OK;
+
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC tlasDesc = {};
+			auto& inputs = tlasDesc.Inputs;
+			inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+			inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+			inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+			inputs.NumDescs = instances.size();
+
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuild = {};
+			device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuild);
+			assert(prebuild.ResultDataMaxSizeInBytes > 0);
+
+			hr = CreateBuffer(
+				device, 
+				CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+				D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+				prebuild.ScratchDataSizeInBytes, 
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+				scratchOut,
+				D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			assert(SUCCEEDED(hr));
+
+			hr = CreateBuffer(
+				device, 
+				CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+				D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+				prebuild.ResultDataMaxSizeInBytes, 
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+				tlasOut,
+				D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+			assert(SUCCEEDED(hr));
+
+			hr = CreateBuffer(
+				device,
+				CreateHeapProperties(D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN),
+				D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+				sizeof(D3D12_RAYTRACING_INSTANCE_DESC),
+				D3D12_RESOURCE_FLAG_NONE,
+				instancesOut,
+				D3D12_RESOURCE_STATE_GENERIC_READ);
+			assert(SUCCEEDED(hr));
+			
+			// copy instance descs to GPU upload buffer 
+			D3D12_RAYTRACING_INSTANCE_DESC* instance;
+			instancesOut->Map(0, nullptr, reinterpret_cast<void**>(&instance));
+			memcpy(instance, instances.data(), instances.size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+			instancesOut->Unmap(0, nullptr);
+
+			inputs.InstanceDescs = instancesOut->GetGPUVirtualAddress();
+			tlasDesc.ScratchAccelerationStructureData = scratchOut->GetGPUVirtualAddress();
+			tlasDesc.DestAccelerationStructureData = tlasOut->GetGPUVirtualAddress();
+
+			commandList->BuildRaytracingAccelerationStructure(&tlasDesc, 0, nullptr);
+
+			return hr;
+		}
+
 		//HRESULT CreateTLASInputs(uint32_t numInputs, const std::vector<ComPtr<ID3D12Resource>>& topInstances)
 		//{
 		//	assert(topInstances.size() > 0);
