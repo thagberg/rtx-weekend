@@ -139,6 +139,15 @@ namespace hvk
 			ComPtr<ID3D12Resource> destBuffer,
 			D3D12_RESOURCE_STATES destState);
 
+		HRESULT CreateGeometryBLAS(
+			ComPtr<ID3D12Device5> device,
+			ComPtr<ID3D12GraphicsCommandList5> commandList,
+			ComPtr<ID3D12Resource> aabbBuffer,
+			D3D12_GPU_VIRTUAL_ADDRESS aabbStart,
+			const std::vector<std::vector<D3D12_RAYTRACING_AABB>>& aabbs,
+			ComPtr<ID3D12Resource>& scratchOut,
+			ComPtr<ID3D12Resource>& blasOut);
+
 #if !defined(D3D12_BOILER)
 #define D3D12_BOILER
 
@@ -757,6 +766,87 @@ namespace hvk
 
 			return heapProps;
 		}
+
+		HRESULT CreateGeometryBLAS(
+			ComPtr<ID3D12Device5> device, 
+			ComPtr<ID3D12GraphicsCommandList5> commandList,
+			ComPtr<ID3D12Resource> aabbBuffer, 
+			D3D12_GPU_VIRTUAL_ADDRESS aabbStart, 
+			const std::vector<std::vector<D3D12_RAYTRACING_AABB>>& aabbs,
+			ComPtr<ID3D12Resource>& scratchOut,
+			ComPtr<ID3D12Resource>& blasOut)
+		{
+			HRESULT hr = S_OK;
+			
+			// Create a geometry description for each group that will correspond to a hit group
+			std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometryDescs;
+			geometryDescs.reserve(aabbs.size());
+			for (const auto& geomGroup : aabbs)
+			{
+				D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE addressAndStride = {};
+				addressAndStride.StartAddress = aabbStart;
+				addressAndStride.StrideInBytes = sizeof(D3D12_RAYTRACING_AABB);
+
+				D3D12_RAYTRACING_GEOMETRY_AABBS_DESC aabbsDesc = {};
+				aabbsDesc.AABBCount = geomGroup.size();
+				aabbsDesc.AABBs = addressAndStride;
+
+				geometryDescs.push_back({ 
+					.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS, 
+					.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, 
+					.AABBs = aabbsDesc });
+			}
+
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+			inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+			inputs.NumDescs = geometryDescs.size();
+			inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+			inputs.pGeometryDescs = geometryDescs.data();
+			inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuild = {};
+			device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuild);
+			assert(prebuild.ResultDataMaxSizeInBytes > 0);
+
+			hr = CreateBuffer(
+				device, 
+				CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+				D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+				prebuild.ScratchDataSizeInBytes, 
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+				scratchOut,
+				D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			assert(SUCCEEDED(hr));
+
+			hr = CreateBuffer(
+				device, 
+				CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+				D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+				prebuild.ResultDataMaxSizeInBytes, 
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+				blasOut,
+				D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+			assert(SUCCEEDED(hr));
+
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+			buildDesc.ScratchAccelerationStructureData = scratchOut->GetGPUVirtualAddress();
+			buildDesc.DestAccelerationStructureData = blasOut->GetGPUVirtualAddress();
+			buildDesc.Inputs = inputs;
+			commandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+			return hr;
+		}
+
+		//HRESULT CreateTLASInputs(uint32_t numInputs, const std::vector<ComPtr<ID3D12Resource>>& topInstances)
+		//{
+		//	assert(topInstances.size() > 0);
+		//	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+		//	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+		//	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		//	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+		//	inputs.NumDescs = topInstances.size();
+		//	inputs.InstanceDescs = topInstances[0]->GetGPUVirtualAddress();
+		//}
 #endif // D3D12_BOILER
 	}
 }

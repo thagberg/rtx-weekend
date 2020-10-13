@@ -638,6 +638,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     // Create DXR Structures
     ComPtr<ID3D12Resource> blas;
     ComPtr<ID3D12Resource> aabbBuffer;
+    ComPtr<ID3D12Resource> aabbScratchBuffer;
     {
         ComPtr<ID3D12Resource> aabbCopyBuffer;
         const size_t unalignedSize = 20 * sizeof(D3D12_RAYTRACING_AABB);
@@ -676,58 +677,61 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         assert(SUCCEEDED(hr));
     }
 
-    D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE aabbAddressAndStride = {};
-    aabbAddressAndStride.StartAddress = aabbBuffer->GetGPUVirtualAddress();
-    aabbAddressAndStride.StrideInBytes = sizeof(D3D12_RAYTRACING_AABB);
-
-    D3D12_RAYTRACING_GEOMETRY_AABBS_DESC aabbsDesc = {};
-    aabbsDesc.AABBCount = 1;
-    aabbsDesc.AABBs = aabbAddressAndStride;
-
-    D3D12_RAYTRACING_GEOMETRY_DESC blasDesc = {};
-    blasDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
-    blasDesc.AABBs = aabbsDesc;
-    blasDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-
-    D3D12_RAYTRACING_GEOMETRY_DESC geometryDescs[] = { blasDesc };
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
-    blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-    blasInputs.NumDescs = 1;
-    blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-    blasInputs.pGeometryDescs = geometryDescs;
-    blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasBuildDesc = {};
-
-    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO aabbPrebuild = {};
-    device->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &aabbPrebuild);
-    assert(aabbPrebuild.ResultDataMaxSizeInBytes > 0);
-
-    ComPtr<ID3D12Resource> aabbScratchBuffer;
-    hvk::boiler::CreateBuffer(
-        device, 
-        hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
-        D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
-        aabbPrebuild.ScratchDataSizeInBytes, 
-        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-        aabbScratchBuffer,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-    hvk::boiler::CreateBuffer(
-        device, 
-        hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
-        D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
-        aabbPrebuild.ResultDataMaxSizeInBytes, 
-        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-        blas,
-        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-
-    blasBuildDesc.ScratchAccelerationStructureData = aabbScratchBuffer->GetGPUVirtualAddress();
-    blasBuildDesc.DestAccelerationStructureData = blas->GetGPUVirtualAddress();
-    blasBuildDesc.Inputs = blasInputs;
-
     commandList->Reset(commandAllocator.Get(), nullptr);
-    commandList->BuildRaytracingAccelerationStructure(&blasBuildDesc, 0, nullptr);
+    hr = hvk::boiler::CreateGeometryBLAS(device, commandList, aabbBuffer, aabbBuffer->GetGPUVirtualAddress(), { {{}} }, blas, aabbScratchBuffer);
+
+    //D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE aabbAddressAndStride = {};
+    //aabbAddressAndStride.StartAddress = aabbBuffer->GetGPUVirtualAddress();
+    //aabbAddressAndStride.StrideInBytes = sizeof(D3D12_RAYTRACING_AABB);
+
+    //D3D12_RAYTRACING_GEOMETRY_AABBS_DESC aabbsDesc = {};
+    //aabbsDesc.AABBCount = 1;
+    //aabbsDesc.AABBs = aabbAddressAndStride;
+
+    //D3D12_RAYTRACING_GEOMETRY_DESC blasDesc = {};
+    //blasDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
+    //blasDesc.AABBs = aabbsDesc;
+    //blasDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+    //D3D12_RAYTRACING_GEOMETRY_DESC geometryDescs[] = { blasDesc };
+    //D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+    //blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    //blasInputs.NumDescs = 1;
+    //blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    //blasInputs.pGeometryDescs = geometryDescs;
+    //blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+
+    //D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasBuildDesc = {};
+
+    //D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO aabbPrebuild = {};
+    //device->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &aabbPrebuild);
+    //assert(aabbPrebuild.ResultDataMaxSizeInBytes > 0);
+
+    //ComPtr<ID3D12Resource> aabbScratchBuffer;
+    //hvk::boiler::CreateBuffer(
+    //    device, 
+    //    hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+    //    D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+    //    aabbPrebuild.ScratchDataSizeInBytes, 
+    //    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+    //    aabbScratchBuffer,
+    //    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+    //hvk::boiler::CreateBuffer(
+    //    device, 
+    //    hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
+    //    D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
+    //    aabbPrebuild.ResultDataMaxSizeInBytes, 
+    //    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+    //    blas,
+    //    D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+
+    //blasBuildDesc.ScratchAccelerationStructureData = aabbScratchBuffer->GetGPUVirtualAddress();
+    //blasBuildDesc.DestAccelerationStructureData = blas->GetGPUVirtualAddress();
+    //blasBuildDesc.Inputs = blasInputs;
+
+    //commandList->Reset(commandAllocator.Get(), nullptr);
+    //commandList->BuildRaytracingAccelerationStructure(&blasBuildDesc, 0, nullptr);
 
     {
         commandList->Close();
