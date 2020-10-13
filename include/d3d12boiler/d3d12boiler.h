@@ -15,6 +15,8 @@ namespace hvk
 {
 	namespace boiler
 	{
+		constexpr uint32_t kDefaultInstanceMask = 1;
+
 		template <typename T, typename U>
 		T Align(T offset, U alignment)
 		{
@@ -142,11 +144,19 @@ namespace hvk
 		HRESULT CreateGeometryBLAS(
 			ComPtr<ID3D12Device5> device,
 			ComPtr<ID3D12GraphicsCommandList5> commandList,
-			ComPtr<ID3D12Resource> aabbBuffer,
 			D3D12_GPU_VIRTUAL_ADDRESS aabbStart,
 			const std::vector<std::vector<D3D12_RAYTRACING_AABB>>& aabbs,
 			ComPtr<ID3D12Resource>& scratchOut,
 			ComPtr<ID3D12Resource>& blasOut);
+
+		void SetTLASInstanceValues(
+			D3D12_RAYTRACING_INSTANCE_DESC* instanceAddress,
+			uint32_t instanceId,
+			uint32_t hitGroupIndex,
+			const XMMATRIX& transform,
+			D3D12_GPU_VIRTUAL_ADDRESS blasAddress,
+			uint8_t instanceMask = kDefaultInstanceMask,
+			uint8_t flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE);
 
 #if !defined(D3D12_BOILER)
 #define D3D12_BOILER
@@ -770,7 +780,6 @@ namespace hvk
 		HRESULT CreateGeometryBLAS(
 			ComPtr<ID3D12Device5> device, 
 			ComPtr<ID3D12GraphicsCommandList5> commandList,
-			ComPtr<ID3D12Resource> aabbBuffer, 
 			D3D12_GPU_VIRTUAL_ADDRESS aabbStart, 
 			const std::vector<std::vector<D3D12_RAYTRACING_AABB>>& aabbs,
 			ComPtr<ID3D12Resource>& scratchOut,
@@ -835,6 +844,24 @@ namespace hvk
 			commandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
 			return hr;
+		}
+
+		void SetTLASInstanceValues(
+			D3D12_RAYTRACING_INSTANCE_DESC* instanceAddress,
+			uint32_t instanceId,
+			uint32_t hitGroupIndex,
+			const XMMATRIX& transform,
+			D3D12_GPU_VIRTUAL_ADDRESS blasAddress,
+			uint8_t instanceMask,
+			uint8_t flags)
+		{
+			instanceAddress = reinterpret_cast<D3D12_RAYTRACING_INSTANCE_DESC*>(Align(reinterpret_cast<size_t>(instanceAddress), D3D12_RAYTRACING_INSTANCE_DESCS_BYTE_ALIGNMENT));
+			instanceAddress->InstanceID = instanceId;
+			instanceAddress->InstanceContributionToHitGroupIndex = hitGroupIndex;
+			instanceAddress->InstanceMask = instanceMask;
+			instanceAddress->Flags = flags;
+			instanceAddress->AccelerationStructure = blasAddress;
+			memcpy(instanceAddress->Transform, &transform, sizeof(XMMATRIX));
 		}
 
 		//HRESULT CreateTLASInputs(uint32_t numInputs, const std::vector<ComPtr<ID3D12Resource>>& topInstances)
