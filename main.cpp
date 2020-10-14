@@ -638,8 +638,8 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     // Create DXR Structures
     ComPtr<ID3D12Resource> blas;
     ComPtr<ID3D12Resource> aabbBuffer;
-    ComPtr<ID3D12Resource> aabbScratchBuffer;
     {
+		ComPtr<ID3D12Resource> aabbScratchBuffer;
         ComPtr<ID3D12Resource> aabbCopyBuffer;
         const size_t unalignedSize = 20 * sizeof(D3D12_RAYTRACING_AABB);
         const size_t alignedSize = hvk::boiler::Align(unalignedSize, D3D12_RAYTRACING_AABB_BYTE_ALIGNMENT);
@@ -675,76 +675,28 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         commandList->Reset(commandAllocator.Get(), nullptr);
         hr = hvk::boiler::CopyBufferGPUImmediate(device, commandList, commandQueue, aabbCopyBuffer, aabbBuffer, D3D12_RESOURCE_STATE_GENERIC_READ);
         assert(SUCCEEDED(hr));
+
+		commandList->Reset(commandAllocator.Get(), nullptr);
+		hr = hvk::boiler::CreateGeometryBLAS(device, commandList, aabbBuffer->GetGPUVirtualAddress(), { {{}} }, blas, aabbScratchBuffer);
+
+		{
+			commandList->Close();
+			ID3D12CommandList* commandLists[] = { commandList.Get() };
+			commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+			hvk::boiler::WaitForGraphics(device, commandQueue);
+		}
     }
 
-    commandList->Reset(commandAllocator.Get(), nullptr);
-    hr = hvk::boiler::CreateGeometryBLAS(device, commandList, aabbBuffer->GetGPUVirtualAddress(), { {{}} }, blas, aabbScratchBuffer);
 
-    {
-        commandList->Close();
-        ID3D12CommandList* commandLists[] = { commandList.Get() };
-        commandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
-        hvk::boiler::WaitForGraphics(device, commandQueue);
-    }
-
-    ComPtr<ID3D12Resource> topScratch;
     ComPtr<ID3D12Resource> topAS;
     ComPtr<ID3D12Resource> topInstance;
     {
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS& topInputs = topLevelBuildDesc.Inputs;
-        topInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-        topInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-        topInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-        topInputs.NumDescs = 1;
+		ComPtr<ID3D12Resource> topScratch;
+        std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
+        instances.push_back(hvk::boiler::CreateRaytracingInstanceDesc(0, 1, 0, blas->GetGPUVirtualAddress(), XMMatrixIdentity()* XMMatrixTranslation(0.f, 0.f, -1.f)));
 
-        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO topPrebuild = {};
-        device->GetRaytracingAccelerationStructurePrebuildInfo(&topInputs, &topPrebuild);
-        assert(topPrebuild.ResultDataMaxSizeInBytes > 0);
-
-        hvk::boiler::CreateBuffer(
-            device, 
-            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
-            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
-            topPrebuild.ScratchDataSizeInBytes, 
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            topScratch,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        assert(SUCCEEDED(hr));
-
-        hvk::boiler::CreateBuffer(
-            device, 
-            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN), 
-            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, 
-            topPrebuild.ResultDataMaxSizeInBytes, 
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            topAS,
-            D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-        assert(SUCCEEDED(hr));
-
-        hvk::boiler::CreateBuffer(
-            device,
-            hvk::boiler::CreateHeapProperties(D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN),
-            D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
-            sizeof(D3D12_RAYTRACING_INSTANCE_DESC),
-            D3D12_RESOURCE_FLAG_NONE,
-            topInstance,
-            D3D12_RESOURCE_STATE_GENERIC_READ);
-        assert(SUCCEEDED(hr));
-
-        // create TLAS instance
-        D3D12_RAYTRACING_INSTANCE_DESC* instance;
-        topInstance->Map(0, nullptr, reinterpret_cast<void**>(&instance));
-        hvk::boiler::SetTLASInstanceValues(instance, 0, 0, XMMatrixIdentity()* XMMatrixTranslation(0.f, 0.f, -1.f), blas->GetGPUVirtualAddress());
-        topInstance->Unmap(0, nullptr);
-
-        topInputs.InstanceDescs = topInstance->GetGPUVirtualAddress();
-        topLevelBuildDesc.ScratchAccelerationStructureData = topScratch->GetGPUVirtualAddress();
-        topLevelBuildDesc.DestAccelerationStructureData = topAS->GetGPUVirtualAddress();
-
-        // let's try figuring out what's required for this call from the top
         commandList->Reset(commandAllocator.Get(), nullptr);
-        commandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+        hvk::boiler::CreateTLAS(device, commandList, instances, topAS, topInstance, topScratch);
 
 		{
 			commandList->Close();

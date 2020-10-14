@@ -158,6 +158,22 @@ namespace hvk
 			uint8_t instanceMask = kDefaultInstanceMask,
 			uint8_t flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE);
 
+		HRESULT CreateTLAS(
+			ComPtr<ID3D12Device5> device,
+			ComPtr<ID3D12GraphicsCommandList5> commandList,
+			std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instances,
+			ComPtr<ID3D12Resource>& tlasOut,
+			ComPtr<ID3D12Resource>& instancesOut,
+			ComPtr<ID3D12Resource>& scratchOut);
+
+		D3D12_RAYTRACING_INSTANCE_DESC CreateRaytracingInstanceDesc(
+			uint32_t instanceId,
+			uint8_t instanceMask,
+			uint32_t hitgroupIndex,
+			D3D12_GPU_VIRTUAL_ADDRESS blasAddress,
+			const XMMATRIX& transform,
+			uint8_t flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE);
+
 #if !defined(D3D12_BOILER)
 #define D3D12_BOILER
 
@@ -932,16 +948,26 @@ namespace hvk
 			return hr;
 		}
 
-		//HRESULT CreateTLASInputs(uint32_t numInputs, const std::vector<ComPtr<ID3D12Resource>>& topInstances)
-		//{
-		//	assert(topInstances.size() > 0);
-		//	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
-		//	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-		//	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		//	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-		//	inputs.NumDescs = topInstances.size();
-		//	inputs.InstanceDescs = topInstances[0]->GetGPUVirtualAddress();
-		//}
+		D3D12_RAYTRACING_INSTANCE_DESC CreateRaytracingInstanceDesc(
+			uint32_t instanceId, 
+			uint8_t instanceMask, 
+			uint32_t hitgroupIndex, 
+			D3D12_GPU_VIRTUAL_ADDRESS blasAddress,
+			const XMMATRIX& transform,
+			uint8_t flags)
+		{
+			D3D12_RAYTRACING_INSTANCE_DESC desc = {
+				//.Transform = XMMatrixIdentity() * XMMatrixTranslation(0.f, 0.f, -1.f),
+				.InstanceID = instanceId,
+				.InstanceMask = instanceMask,
+				.InstanceContributionToHitGroupIndex = hitgroupIndex,
+				.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE,
+				.AccelerationStructure = blasAddress};
+			XMStoreFloat3x4A(reinterpret_cast<XMFLOAT3X4A*>(&desc.Transform), transform);
+
+			return desc;
+		}
+
 #endif // D3D12_BOILER
 	}
 }
