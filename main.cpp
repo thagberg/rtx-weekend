@@ -635,7 +635,10 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     //         hvk::Plane(hvk::Vector(-1.f, 0.25f, -2.f), hvk::Vector(1.f, 0.f, 0.f)));
     // registry.emplace<hvk::Material>(metalBox, hvk::MaterialType::Metal, hvk::Color(.8f, .8f, .8f), -1.f);
 
-    // Create DXR Structures
+    // --- Prepare DXR  --- //
+    //----------------------//
+
+    // BLAS
     ComPtr<ID3D12Resource> blas;
     ComPtr<ID3D12Resource> aabbBuffer;
     {
@@ -688,6 +691,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     }
 
 
+    // TLAS
     ComPtr<ID3D12Resource> topAS;
     ComPtr<ID3D12Resource> topInstance;
     {
@@ -705,6 +709,37 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 			hvk::boiler::WaitForGraphics(device, commandQueue);
 		}
     }
+
+    // State
+
+    // Root signature for RayGen
+    ComPtr<ID3D12RootSignature> raygenRootSig;
+    {
+        std::vector<D3D12_DESCRIPTOR_RANGE> raygenRanges = {
+            {D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 1}, // output buffer
+            {D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, 1}  // TLAS
+        };
+
+		D3D12_ROOT_PARAMETER raygenParam = {};
+        raygenParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        raygenParam.DescriptorTable.NumDescriptorRanges = raygenRanges.size();
+        raygenParam.DescriptorTable.pDescriptorRanges = raygenRanges.data();
+        raygenParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        std::vector<D3D12_ROOT_PARAMETER> rootParams = { raygenParam };
+
+        hr = hvk::boiler::CreateRootSignature(device, rootParams, {}, raygenRootSig, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+        assert(SUCCEEDED(hr));
+    }
+
+    D3D12_STATE_OBJECT_DESC testDesc = {};
+    //device->CreateStateObject()
+    ComPtr<ID3D12StateObject> raytracingPipelineState;
+    //commandList->SetPipelineState1()
+
+
+    // Dispatch rays
+    D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
+    commandList->DispatchRays(&dispatchDesc);
 
 	// Create thread pool
 	hvk::ThreadPool pool(kNumThreads);

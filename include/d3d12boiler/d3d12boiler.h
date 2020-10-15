@@ -65,7 +65,8 @@ namespace hvk
 			ComPtr<ID3D12Device> device,
 			const std::vector<D3D12_ROOT_PARAMETER>& rootParams,
 			const std::vector<D3D12_STATIC_SAMPLER_DESC>& samplers,
-			ComPtr<ID3D12RootSignature>& rsOut);
+			ComPtr<ID3D12RootSignature>& rsOut,
+			D3D12_ROOT_SIGNATURE_FLAGS flags=D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		HRESULT CreateGraphicsPipelineState(
 			ComPtr<ID3D12Device> device,
@@ -360,7 +361,8 @@ namespace hvk
 			ComPtr<ID3D12Device> device,
 			const std::vector<D3D12_ROOT_PARAMETER>& rootParams,
 			const std::vector<D3D12_STATIC_SAMPLER_DESC>& samplers,
-			ComPtr<ID3D12RootSignature>& rsOut)
+			ComPtr<ID3D12RootSignature>& rsOut,
+			D3D12_ROOT_SIGNATURE_FLAGS flags)
 		{
 			auto hr = S_OK;
 
@@ -369,7 +371,7 @@ namespace hvk
 			desc.pParameters = rootParams.data();
 			desc.NumStaticSamplers = static_cast<uint8_t>(samplers.size());
 			desc.pStaticSamplers = samplers.data();
-			desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+			desc.Flags = flags;
 
 			ComPtr<ID3DBlob> signature;
 			ComPtr<ID3DBlob> error;
